@@ -243,26 +243,52 @@ Python UE Agent Harness 通过**提示词注入 + Skill 文本 + Interceptor 只
 **海拔**："刚才调的这个维度，方向对了吗"
 
 **输入**：
-- `reference_path: string`
+- `reference_path: string` — 参考图文件路径
 - `dimension: string` — 8 维度之一
 
-**行为**：参考图 + 当前截图 → Vision 单维度提问（~200 token output vs assess_lighting ~2000）
+**行为**：
+1. 从磁盘加载参考图（`reference_path`）
+2. 捕获当前视口截图（`CaptureViewportImage`）
+3. 双图 → Vision 单维度提问：
+   "只看 {dimension}。当前截图相比参考图，是 closer / similar / further？给一句话证据。"
 
-**返回**：
+**与 `assess_lighting` 的关系**：
+- `assess_lighting` 先做全维度分析 → LLM 拿到全局 gap 报告 → LLM 决定先调哪个维度
+- 每次调参后 → LLM 调 `check_dimension(reference_path, "color_temperature")`
+- `check_dimension` **不依赖 `assess_lighting` 的输出**——它自己加载参考图、自己做双图对比
+- 不需要 LLM 传递 rating 值、不需要缓存参考图分析结果
+- Vision 看到两张图直接判断方向——这是**直接视觉对比**，不是**数值推导**
+
+**返回**（有量化指标的维度，如 color_temperature）：
 ```json
 {
   "dimension": "color_temperature",
-  "current_rating": 4,
-  "target_rating": 5,
   "verdict": "closer",
-  "gap_remaining": 1,
-  "evidence": "当前色调已从冷白转为暖黄，接近参考图的金色光线"
+  "evidence": "当前色调已从冷白转为暖黄，接近参考图的金色光线",
+  "quantitative": {
+    "ref_value": 1.42,
+    "cur_value": 1.15,
+    "delta": "-0.27"
+  }
 }
 ```
+
+**返回**（无量化指标的维度，如 light_direction）：
+```json
+{
+  "dimension": "light_direction",
+  "verdict": "similar",
+  "evidence": "光源方向没有明显变化"
+}
+```
+
+量化指标仅以下 3 个维度有：`brightness`(亮度均值)、`color_temperature`(R/B比)、`saturation`(RGB标准差归一化)。其余 5 个维度(`light_direction`/`contrast`/`color_cast`/`atmosphere`/`shadow_depth`)纯靠 Vision 主观判断。
 
 **verdict 三态**：`closer` | `similar` | `further`
 
 **调用频率**：高频，每次调参后。在 `assess_lighting` 全维度评估之间作为轻量方向确认
+
+**设计理由**：无状态。所有输入来自参数（`reference_path`, `dimension`）和现场采集（当前截图）。没有从 `assess_lighting` 输出到 `check_dimension` 输入的跨越 LLM 上下文的数据传递。
 
 ---
 
@@ -602,31 +628,48 @@ Session Start
 **预计时长**：1 周
 **依赖**：Issue 002 ✅ + Issue 003 ✅
 
-**目标**：实现辅助工具——场景参数发现和单维度快速验证
+**目标**：实现辅助工具。`map_atmosphere` 发现场景中可调的氛围参数并按 Tier 排列，`check_dimension` 做调参后的单维度方向验证。
+
+**设计原则**（经讨论确定）：
+- **无持久化状态**：不缓存 Actor 属性、不缓存 Vision 结果。所有数据当场获取
+- **check_dimension 无状态**：不依赖 `assess_lighting` 的输出。自己加载参考图 + 自己做双图 Vision 对比
+- **量化指标随附**：`check_dimension` 在 Vision 判定的同时也算量化 delta（<10ms，零 API 成本）
 
 **任务**：
 
 | # | 任务 | 详情 |
 |:--:|------|------|
-| 4.1 | map_atmosphere 实现 | 5 类组件 `find_actors` + `list_properties` + Vision classify/whitelist fallback + 3 Tier 编排 + current_value 回填 |
-| 4.2 | whitelist fallback | 从 Python harness 迁移 ~50 个已知氛围属性的硬编码映射（dimension → 属性名模式） |
-| 4.3 | check_dimension 实现 | 参考图 + 当前截图 → Vision 单维度提问 → closer/similar/further + rating diff |
-| 4.4 | 截图复用 | `assess_lighting` 的截图结果缓存 30s，`check_dimension` 如果距离上次截图 < 30s 且场景无变化 → 复用 |
+| 4.1 | `map_atmosphere` 实现 | 5 类组件 `find_actors`(glob 分别查 DirectionalLight/SkyLight/SkyAtmosphere/ExponentialHeightFog/VolumetricCloud/PostProcessVolume) → `get_properties` 提取组件的 refPath → Vision classify（或 whitelist fallback）标注每个属性属于哪个 8 维度 → 3 Tier 编排输出 + current_value 回填 |
+| 4.2 | whitelist fallback | 从 Python harness 迁移 ~50 个已知氛围属性的硬编码映射（dimension → 属性名模式）。Vision 不可用时自动退级 |
+| 4.3 | `check_dimension` 实现 | 输入 `(reference_path, dimension)` → 加载参考图(从磁盘) + 捕获当前视口 → Stage 1(量化 delta，`getDimensionMetric`) + Stage 2(Vision 双图单维度提问: closer/similar/further)。输出 `{ verdict, evidence, quantitative? }` |
+| 4.4 | `metrics.ts` 扩展 | 新增 `getDimensionMetric(dimension, comparison)` → 从 `QuantitativeComparison` 提取单维度的量化指标。3 个有指标(brightness/color_temperature/saturation)，5 个无(light_direction/contrast/color_cast/atmosphere/shadow_depth 纯靠 Vision) |
+| 4.5 | 截图复用(可选优化) | `check_dimension` 两次连续调用的截图可能相同(LM 调了一个参数 → check → 立刻又调一个参数 → check)。30s TTL 的简单变量缓存，无持久化 |
 
 **交付物**：
-- `tools/map-atmosphere.ts`
-- `tools/check-dimension.ts`
-- whitelist JSON 文件（dimension → property name patterns）
+- `tools/map-atmosphere.ts` — map_atmosphere 工具完整实现
+- `tools/check-dimension.ts` — check_dimension 工具完整实现
+- `vision/metrics.ts` 扩展 — 新增 `getDimensionMetric()`
+- whitelist JSON 文件 — dimension → property name 模式映射
+- `index.ts` 更新 — 替换两个占位工具为真实实现
 
 **验证标准**：
-- [ ] `map_atmosphere()` → 正确识别场景中所有 5 类氛围组件
-- [ ] 场景中只有 1 个 DirectionalLight → `found: true, count: 1`
-- [ ] 场景中没有 VolumetricCloud → `found: false, hint: "请调 add_to_scene_from_class 创建"`
-- [ ] whitelist fallback：Vision 不可用时 → 仍输出维度→属性映射（覆盖率 ≥ 80%）
-- [ ] `check_dimension(ref, "color_temperature")` → Vision output ≤ 300 tokens
-- [ ] 连续 3 次相同的 `check_dimension` 调用 → verdict 一致率 ≥ 80%
+- [ ] `map_atmosphere()` → 正确识别场景中所有氛围组件（含缺失提示）
+- [ ] 场景中只有 1 个 DirectionalLight → `found: true, count: 1`；无 VolumetricCloud → `found: false`
+- [ ] 组件属性通过 refPath 正确解析（Actor → `get_properties(['directionalLightComponent'])` → Component refPath → `list_properties`）
+- [ ] whitelist fallback：Vision 不可用时仍输出维度→属性映射（覆盖率 ≥ 80%）
+- [ ] 3 个 Tier 编排正确：CORE_LIGHTING(tier1) → ATMOSPHERE(tier2) → POSTPROCESS(tier3)
+- [ ] `check_dimension(ref, "color_temperature")` → Vision 双图对比，output ≤ 300 tokens
+- [ ] `check_dimension(ref, "brightness")` → 附带 `quantitative: { ref_value, cur_value, delta }`
+- [ ] `check_dimension(ref, "light_direction")` → 无 quantitative（该维度无量化指标）
+- [ ] 连续 3 次相同调用 → verdict 一致率 ≥ 80%
+- [ ] Vision 不可用 → 返回 `{ error: "vision_unavailable" }`，不阻断主流程
 
-**预期代码量**：~800–1000 行 TS
+**预期代码量**：~800–1000 行 TS（含 metrics.ts 扩展的 ~25 行）
+
+**未包含的状态设计**：
+- 不缓存 `map_atmosphere` 结果（每次都重新扫描，场景变化时自动更新）
+- 不缓存 `assess_lighting` 的参考图分析结果（`check_dimension` 自己加载参考图对照）
+- 截图复用为 30s TTL 单变量（不做文件级缓存、不做 session 持久化）
 
 ---
 
