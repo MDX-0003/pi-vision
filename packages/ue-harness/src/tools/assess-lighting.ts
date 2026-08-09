@@ -51,7 +51,7 @@ interface DimensionGap {
 }
 
 /** assess_lighting 完整返回 */
-interface AssessLightingResult {
+export interface AssessLightingResult {
 	success: boolean;
 	error?: string;
 

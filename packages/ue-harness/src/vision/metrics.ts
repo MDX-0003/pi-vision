@@ -109,6 +109,35 @@ export async function computeImageStats(buffer: Buffer): Promise<ImageStats> {
 	};
 }
 
+/** 维度 → 量化指标提取 (Issue 004) */
+export function getDimensionMetric(
+	dimension: string,
+	comparison: QuantitativeComparison,
+): { refValue: number; curValue: number; delta: string } | null {
+	switch (dimension) {
+		case "brightness":
+			return {
+				refValue: comparison.reference.luminance,
+				curValue: comparison.current.luminance,
+				delta: `${comparison.luminanceDelta > 0 ? "+" : ""}${comparison.luminanceDelta.toFixed(1)}%`,
+			};
+		case "color_temperature":
+			return {
+				refValue: comparison.reference.colorTempRatio,
+				curValue: comparison.current.colorTempRatio,
+				delta: `${comparison.colorTempRatioDelta > 0 ? "+" : ""}${comparison.colorTempRatioDelta.toFixed(2)}`,
+			};
+		case "saturation":
+			return {
+				refValue: comparison.reference.saturation,
+				curValue: comparison.current.saturation,
+				delta: `${comparison.saturationDelta > 0 ? "+" : ""}${comparison.saturationDelta.toFixed(3)}`,
+			};
+		default:
+			return null;
+	}
+}
+
 /** 直方图相关性 (0-1) */
 async function computeHistogramCorrelation(buf1: Buffer, buf2: Buffer): Promise<number> {
 	// 简化版: 对缩小到 64x64 的两张图做像素相关

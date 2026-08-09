@@ -1,7 +1,7 @@
 /**
- * Issue 003 — UE Harness Pi Extension 入口
+ * Issue 005 — UE Harness Pi Extension 入口
  *
- * session_start → 连接 UE + Vision API + 批量注册工具
+ * session_start → 连接 UE + Vision API + 批量注册工具 + 初始化工作流状态机
  * session_shutdown → 断开连接
  */
 
@@ -10,13 +10,17 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { existsSync, readFileSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
-import { Type } from "typebox";
 import { setUeClient, setVisionClient } from "./state.ts";
 import { assessLightingDef, executeAssessLighting } from "./tools/assess-lighting.ts";
+import { checkDimensionDef, executeCheckDimension } from "./tools/check-dimension.ts";
+import { executeMapAtmosphere, mapAtmosphereDef } from "./tools/map-atmosphere.ts";
 import { UeClient } from "./ue-client/mcp-client.ts";
 import { convertTool } from "./ue-client/schema-converter.ts";
 import type { UeHarnessConfig } from "./ue-client/types.ts";
 import { VisionClient } from "./vision/vision-client.ts";
+import { checkToolCall } from "./workflow/guard-rules.ts";
+import { buildGapSummary, buildPhaseContext } from "./workflow/injections.ts";
+import { createInitialState, onAssessLighting, onCheckDimension, type PhaseState } from "./workflow/phase-machine.ts";
 
 // ── Vision auth 文件 ──
 
@@ -42,6 +46,7 @@ function loadVisionAuth(): VisionAuthFile | null {
 // ── 扩展级单例 ──
 let _ueClient: UeClient | null = null;
 let _visionClient: VisionClient | null = null;
+let _phaseState: PhaseState = createInitialState();
 
 function getConfig(): UeHarnessConfig {
 	const visionAuth = loadVisionAuth();
@@ -93,22 +98,16 @@ function createUeToolExecutor(toolName: string) {
 	};
 }
 
-// ── 自研工具占位 ──
-async function stubResult(name: string): Promise<AgentToolResult<null>> {
-	return {
-		content: [{ type: "text", text: `[${name}] Not yet implemented.` }],
-		details: null,
-	};
-}
-
 function registerSelfTools(pi: ExtensionAPI): void {
-	// map_atmosphere (Issue 004)
+	// map_atmosphere (Issue 004 ✅)
 	pi.registerTool({
-		name: "map_atmosphere",
-		label: "Map Atmosphere",
-		description: "扫描场景中 5 类氛围组件，输出维度→UE属性映射表，按 Tier 排列调参顺序。",
-		parameters: Type.Object({}),
-		execute: () => stubResult("map_atmosphere"),
+		name: mapAtmosphereDef.name,
+		label: mapAtmosphereDef.label,
+		description: mapAtmosphereDef.description,
+		parameters: mapAtmosphereDef.parameters,
+		promptSnippet: mapAtmosphereDef.promptSnippet,
+		promptGuidelines: mapAtmosphereDef.promptGuidelines,
+		execute: () => executeMapAtmosphere(),
 	});
 
 	// assess_lighting (Issue 003 ✅)
@@ -122,16 +121,15 @@ function registerSelfTools(pi: ExtensionAPI): void {
 		execute: (_id: string, params: { reference_path: string }) => executeAssessLighting(params),
 	});
 
-	// check_dimension (Issue 004)
+	// check_dimension (Issue 004 ✅)
 	pi.registerTool({
-		name: "check_dimension",
-		label: "Check Dimension",
-		description: "单维度方向性验证：当前截图在指定维度上是 closer/similar/further 于参考图。",
-		parameters: Type.Object({
-			reference_path: Type.String(),
-			dimension: Type.String(),
-		}),
-		execute: () => stubResult("check_dimension"),
+		name: checkDimensionDef.name,
+		label: checkDimensionDef.label,
+		description: checkDimensionDef.description,
+		parameters: checkDimensionDef.parameters,
+		promptSnippet: checkDimensionDef.promptSnippet,
+		promptGuidelines: checkDimensionDef.promptGuidelines,
+		execute: (_id: string, params: { reference_path: string; dimension: string }) => executeCheckDimension(params),
 	});
 }
 
@@ -144,6 +142,7 @@ export default function ueHarnessExtension(pi: ExtensionAPI): void {
 		_visionClient = new VisionClient(config);
 		setUeClient(_ueClient);
 		setVisionClient(_visionClient);
+		_phaseState = createInitialState();
 
 		try {
 			await _ueClient.connect();
@@ -208,5 +207,48 @@ export default function ueHarnessExtension(pi: ExtensionAPI): void {
 		setVisionClient(null);
 	});
 
-	console.log("[ue-harness] Extension loaded (Issue 003 — Vision Pipeline)");
+	// ── Issue 005: tool_call Guard ──
+	pi.on("tool_call", (event: any) => {
+		const guard = checkToolCall(event.toolName, event.input, _phaseState);
+		if (guard.block) {
+			return { block: true, reason: guard.reason };
+		}
+		return undefined;
+	});
+
+	// ── Issue 005: tool_result → Phase 更新 ──
+	pi.on("tool_result", (event: any) => {
+		if (event.toolName === "assess_lighting") {
+			try {
+				const text = event.content?.[0]?.text || "";
+				const data = JSON.parse(text);
+				onAssessLighting(_phaseState, data.gaps, data.artificiality?.detected || false);
+				console.log(
+					"[ue-harness] Phase:",
+					_phaseState.phase,
+					"Tier:",
+					_phaseState.tier,
+					"Assess:",
+					_phaseState.assessCount,
+					"Unchanged:",
+					_phaseState.unchangedRounds,
+				);
+			} catch {}
+		} else if (event.toolName === "check_dimension") {
+			onCheckDimension(_phaseState);
+		}
+	});
+
+	// ── Issue 005: before_agent_start 注入 ──
+	pi.on("before_agent_start", (event: any) => {
+		const phaseCtx = buildPhaseContext(_phaseState);
+		const gapSummary = buildGapSummary(_phaseState);
+		const appendix = phaseCtx + gapSummary;
+		if (appendix) {
+			return { systemPrompt: `${event.systemPrompt || ""}\n${appendix}` };
+		}
+		return undefined;
+	});
+
+	console.log("[ue-harness] Extension loaded (Issue 005 — Workflow Orchestration)");
 }
