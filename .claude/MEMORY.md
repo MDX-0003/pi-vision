@@ -1,0 +1,3 @@
+- [禁止 as any](memory/as-any-ban.md) — as any 压制 TS 类型检查，是本扩展中 2026-08-09 bug 的直接根因
+- [MCP SDK callTool 三参数](memory/mcp-calltool-three-params.md) — callTool(params, resultSchema?, options?)，options 在第三位
+- [UE 工具名净化](memory/ue-tool-name-sanitization.md) — UE 点号名 vs LLM 下划线名，两层命名系统

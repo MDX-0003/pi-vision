@@ -1,0 +1,19 @@
+{
+  "name": "@ue-harness/pi-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "test": "node --experimental-vm-modules test/verify-converter.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "typebox": "1.3.7"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}
