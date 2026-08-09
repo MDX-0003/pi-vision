@@ -1,0 +1,5 @@
+{
+  "apiKey": "your-vision-api-key-here",
+  "baseUrl": "https://api.anthropic.com",
+  "modelId": "claude-sonnet-5-20251001"
+}

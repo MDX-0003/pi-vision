@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
+    "sharp": "0.34.5",
     "typebox": "1.3.7"
   },
   "devDependencies": {

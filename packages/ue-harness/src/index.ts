@@ -1,29 +1,61 @@
 /**
- * Issue 002 — UE Harness Pi Extension 入口
+ * Issue 003 — UE Harness Pi Extension 入口
  *
- * session_start → 连接 UE + 加载工具集 + 批量注册
+ * session_start → 连接 UE + Vision API + 批量注册工具
  * session_shutdown → 断开连接
- *
- * 自研工具占位: map_atmosphere / assess_lighting / check_dimension
- * (Issue 003-004 实现)
  */
 
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { existsSync, readFileSync } from "fs";
+import { homedir } from "os";
+import { join } from "path";
 import { Type } from "typebox";
+import { setUeClient, setVisionClient } from "./state.ts";
+import { assessLightingDef, executeAssessLighting } from "./tools/assess-lighting.ts";
 import { UeClient } from "./ue-client/mcp-client.ts";
 import { convertTool } from "./ue-client/schema-converter.ts";
 import type { UeHarnessConfig } from "./ue-client/types.ts";
+import { VisionClient } from "./vision/vision-client.ts";
+
+// ── Vision auth 文件 ──
+
+/** ~/.pi/agent/vision-auth.json 的内容格式 */
+interface VisionAuthFile {
+	apiKey: string;
+	baseUrl?: string;
+	modelId?: string;
+}
+
+function loadVisionAuth(): VisionAuthFile | null {
+	const visionAuthPath = join(homedir(), ".pi", "agent", "vision-auth.json");
+	try {
+		if (existsSync(visionAuthPath)) {
+			return JSON.parse(readFileSync(visionAuthPath, "utf-8")) as VisionAuthFile;
+		}
+	} catch {
+		// ignore parse errors
+	}
+	return null;
+}
 
 // ── 扩展级单例 ──
 let _ueClient: UeClient | null = null;
+let _visionClient: VisionClient | null = null;
 
 function getConfig(): UeHarnessConfig {
+	const visionAuth = loadVisionAuth();
+
+	// 优先级: 环境变量 > vision-auth.json > 默认值
+	const visionApiKey = process.env.VISION_API_KEY || visionAuth?.apiKey;
+	const visionApiBaseUrl = process.env.VISION_API_BASE_URL || visionAuth?.baseUrl;
+	const visionModelId = process.env.VISION_MODEL_ID || visionAuth?.modelId;
+
 	return {
 		ueMcpUrl: process.env.UE_MCP_URL || "http://localhost:8000/mcp",
-		visionApiKey: process.env.VISION_API_KEY,
-		visionApiBaseUrl: process.env.VISION_API_BASE_URL,
-		visionModelId: process.env.VISION_MODEL_ID,
+		visionApiKey,
+		visionApiBaseUrl,
+		visionModelId,
 		visionMaxTokens: process.env.VISION_MAX_TOKENS ? parseInt(process.env.VISION_MAX_TOKENS, 10) : 3000,
 		ueMcpTimeoutMs: process.env.UE_MCP_TIMEOUT_MS ? parseInt(process.env.UE_MCP_TIMEOUT_MS, 10) : 60000,
 		ueMcpReconnectMax: process.env.UE_MCP_RECONNECT_MAX ? parseInt(process.env.UE_MCP_RECONNECT_MAX, 10) : 3,
@@ -64,7 +96,7 @@ function createUeToolExecutor(toolName: string) {
 // ── 自研工具占位 ──
 async function stubResult(name: string): Promise<AgentToolResult<null>> {
 	return {
-		content: [{ type: "text", text: `[${name}] Not yet implemented. (Issue 003-004)` }],
+		content: [{ type: "text", text: `[${name}] Not yet implemented.` }],
 		details: null,
 	};
 }
@@ -79,15 +111,15 @@ function registerSelfTools(pi: ExtensionAPI): void {
 		execute: () => stubResult("map_atmosphere"),
 	});
 
-	// assess_lighting (Issue 003)
+	// assess_lighting (Issue 003 ✅)
 	pi.registerTool({
-		name: "assess_lighting",
-		label: "Assess Lighting",
-		description: "对比参考图与当前截图，输出每维度 gap 报告（量化指标 + Vision 主观评估）。",
-		parameters: Type.Object({
-			reference_path: Type.String(),
-		}),
-		execute: () => stubResult("assess_lighting"),
+		name: assessLightingDef.name,
+		label: assessLightingDef.label,
+		description: assessLightingDef.description,
+		parameters: assessLightingDef.parameters,
+		promptSnippet: assessLightingDef.promptSnippet,
+		promptGuidelines: assessLightingDef.promptGuidelines,
+		execute: (_id: string, params: { reference_path: string }) => executeAssessLighting(params),
 	});
 
 	// check_dimension (Issue 004)
@@ -105,15 +137,24 @@ function registerSelfTools(pi: ExtensionAPI): void {
 
 // ── 扩展入口 ──
 export default function ueHarnessExtension(pi: ExtensionAPI): void {
-	// ── Session Start: 连接 UE + 批量注册工具 ──
 	pi.on("session_start", async () => {
 		const config = getConfig();
 
 		_ueClient = new UeClient(config);
+		_visionClient = new VisionClient(config);
+		setUeClient(_ueClient);
+		setVisionClient(_visionClient);
 
 		try {
 			await _ueClient.connect();
 			console.log("[ue-harness] Connected to UE MCP at", config.ueMcpUrl);
+			const visionSource = process.env.VISION_API_KEY ? "env" : loadVisionAuth() ? "vision-auth.json" : "not set";
+			console.log(
+				"[ue-harness] Vision API:",
+				_visionClient.isConfigured
+					? `configured (via ${visionSource})`
+					: "NOT CONFIGURED — create ~/.pi/agent/vision-auth.json",
+			);
 
 			// 获取全部工具并转换注册
 			const allTools = await _ueClient.listAllTools();
@@ -160,9 +201,12 @@ export default function ueHarnessExtension(pi: ExtensionAPI): void {
 		if (_ueClient) {
 			await _ueClient.disconnect();
 			_ueClient = null;
+			setUeClient(null);
 			console.log("[ue-harness] Disconnected from UE MCP");
 		}
+		_visionClient = null;
+		setVisionClient(null);
 	});
 
-	console.log("[ue-harness] Extension loaded (Issue 002 — MCP Bridge)");
+	console.log("[ue-harness] Extension loaded (Issue 003 — Vision Pipeline)");
 }

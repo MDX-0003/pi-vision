@@ -53,7 +53,7 @@ Python UE Agent Harness 通过**提示词注入 + Skill 文本 + Interceptor 只
 
 **行为**：
 1. `find_actors`（5 类氛围组件：DirectionalLight, SkyLight, SkyAtmosphere, ExponentialHeightFog, VolumetricCloud, PostProcessVolume）
-2. 对每个找到的 Actor 调 `list_properties` → 获取属性名列表 → MiMo classify（或 whitelist fallback）→ 8 维度标注
+2. 对每个找到的 Actor 调 `list_properties` → 获取属性名列表 → Vision classify（或 whitelist fallback）→ 8 维度标注
 3. 按硬编码优先级输出 3 个 Tier
 
 **返回**：
@@ -378,12 +378,12 @@ Tier 门控由 `tool_call` handler 检查，是**硬约束**——LLM 无法绕�
 │   ├── map-atmosphere.ts             # Tool A: 场景参数发现
 │   │                                 #   · 5类组件扫描 → find_actors
 │   │                                 #   · 属性发现 → list_properties
-│   │                                 #   · MiMo classify → 维度标注
+│   │                                 #   · Vision classify → 维度标注
 │   │                                 #   · whitelist fallback (50+ 已知氛围属性)
 │   │                                 #   · Tier 编排输出
 │   ├── assess-lighting.ts            # Tool B: 全维度双重评估
 │   │                                 #   · Stage 1: PIL 量化指标 (sharp)
-│   │                                 #   · Stage 2: Vision 氛围分析 (MiMo)
+│   │                                 #   · Stage 2: Vision 氛围分析 (Vision)
 │   │                                 #   · 特征对比 (rating diff → gap)
 │   │                                 #   · artificiality 检测
 │   └── check-dimension.ts            # Tool C: 单维度方向性验证
@@ -391,7 +391,12 @@ Tier 门控由 `tool_call` handler 检查，是**硬约束**——LLM 无法绕�
 │       #   · closer/similar/further 三态
 │
 ├── vision/
-│   ├── mimo-client.ts                # MiMo API HTTP 客户端
+│   ├── capture.ts                     # 截图工具封装 (ViewportCaptureToolset)
+│   │                                 #   · CaptureViewportImage → 文件路径 → fs.readFileSync → base64
+│   │                                 #   · ResolutionMultiplier: 1.0 (默认) / 2.0 (超采样)
+│   │                                 #   · 返回文件路径 (非 base64)，避免 MCP 巨型 payload
+│   │                                 #   · 不依赖 DWM，UE 最小化/后台时仍可用
+│   ├── vision-client.ts                # Vision API HTTP 客户端
 │   │                                 #   · 独立于 Pi ModelRuntime
 │   │                                 #   · 支持图片 base64 发送
 │   │                                 #   · 结构化 JSON 响应解析
@@ -434,6 +439,8 @@ Session Start
 ┌─ pi.on("session_start") ────────────────────────────────────┐
 │  ueClient.connect("http://localhost:8000")                  │
 │  ueTools = ueClient.listTools()                             │
+│  // 强制排除 CaptureEditorImage (DWM 依赖)                   │
+│  excludedToolNames = ["*CaptureEditorImage"]                 │
 │  for each ueTool: pi.registerTool(convertToPiTool(ueTool)) │
 │  pi.registerTool(mapAtmosphereDef)                          │
 │  pi.registerTool(assessLightingDef)                          │
@@ -486,7 +493,7 @@ Session Start
 |:--:|------|------|
 | 1.1 | MCP Client 最小实现 | 使用 `@modelcontextprotocol/sdk` 的 `Client` + `StreamableHTTPClientTransport`。封装 `listTools()` 和 `callTool(name, args)` |
 | 1.2 | tools/list 验证 | 调 UE :8000 的 `tools/list`，验证能获取完整工具列表（预期 200+ 工具） |
-| 1.3 | 代表性工具调用 | 选 5 个代表性工具做端到端调通：`find_actors`(glob 查询)、`get_properties`(属性读取)、`set_properties`(属性写入)、`CaptureEditorImage`(截图)、`get_actor_transform`(变换读取) |
+| 1.3 | 代表性工具调用 | 选 5 个代表性工具做端到端调通：`find_actors`(glob 查询)、`get_properties`(属性读取)、`set_properties`(属性写入)、`CaptureViewportImage`(截图，ViewportCaptureToolset，返回文件路径)、`get_actor_transform`(变换读取) |
 | 1.4 | SSE 解析验证 | 验证长时间工具调用的 SSE event-stream 解析（ping 心跳处理、分帧重组、超时重连） |
 | 1.5 | JSON Schema 提取 | 从 `tools/list` 返回中提取一个工具的 JSON Schema，手动检查字段完备性 |
 
@@ -499,7 +506,7 @@ Session Start
 - [ ] `listTools()` 返回 ≥ 150 个工具
 - [ ] `callTool("SceneTools.find_actors", {glob: "*Light*", tag: ""})` 返回有效 JSON
 - [ ] `callTool("ObjectTools.set_properties", {...})` 写入成功 → `get_properties` 读回一致
-- [ ] `CaptureEditorImage` 返回有效 base64 图片
+- [ ] `CaptureViewportImage` (ViewportCaptureToolset) 返回有效截图文件路径 → 文件存在且 ≥ 100KB
 - [ ] SSE 事件在 30s+ 的工具调用中正确分帧，无数据丢失
 - [ ] MCP 连接断开后自动重连（最多 3 次）
 
@@ -526,7 +533,7 @@ Session Start
 | 2.2 | UE 工具 execute() 封装 | 每个 UE 工具 → `ToolDefinition`，`execute()` 内部：参数 TypeBox 校验 → MCP `tools/call` HTTP 请求 → SSE 解析 → `AgentToolResult`。错误分类：timeout / server_error / tool_not_found / validation_error |
 | 2.3 | session_start 批量注册 | `pi.on("session_start")` → `ueClient.connect()` → `listTools()` → 遍历 → `pi.registerTool()`。session_shutdown → 断开连接 |
 | 2.4 | 扩展骨架搭建 | `index.ts` 入口、`pi.registerTool` 的 3 个自研工具占位、事件监听注册 |
-| 2.5 | 工具白名单过滤 | 可选：不暴露全部 200+ 工具。默认暴露 UE 全部工具，但通过 Pi 的 `allowedToolNames`/`excludedToolNames` 支持过滤 |
+| 2.5 | 工具白名单过滤 | 强制排除 `ToolsetRegistry.EditorAppToolset.CaptureEditorImage`（依赖 DWM，窗口最小化即失败）。所有截图使用 `ViewportCaptureToolset.ViewportCaptureToolset.CaptureViewportImage`（GPU Render Target 读回，返回文件路径）。其他 UE 工具默认全量暴露 |
 
 **交付物**：
 - `ue-client/schema-converter.ts` — `jsonSchemaToTypeBox(schema: JSONSchema): TSchema`
@@ -561,14 +568,14 @@ Session Start
 
 | # | 任务 | 详情 |
 |:--:|------|------|
-| 3.1 | MiMo API 客户端 | 独立于 Pi ModelRuntime 的 HTTP 客户端。支持图片 base64 发送（resize 1024×768 保持宽高比）。结构化 JSON 响应解析。错误重试 |
+| 3.1 | Vision API 客户端 | 独立于 Pi ModelRuntime 的 HTTP 客户端。支持图片 base64 发送（resize 1024×768 保持宽高比）。结构化 JSON 响应解析。错误重试 |
 | 3.2 | 量化指标模块 | 用 `sharp` 实现 4 项指标：亮度均值、色温 R/B 比、饱和度、直方图相关性。纯同步计算，<10ms |
 | 3.3 | Vision prompt 模板 | 8 维度氛围特征提取 prompt（单图独立分析版） + 结构化 JSON 输出约束。每个维度输出 rating(1-5) + description |
 | 3.4 | assess_lighting 工具实现 | 参考图加载 → Stage 1 (PIL) + Stage 2 (Vision) 并行 → 特征对比 (rating diff → gap) → gap 排序 → artifiicality 检测 |
 | 3.5 | 截图工具识别 | `CaptureEditorImage` (EditorAppToolset) 或 `Screenshot` (SlateInspector) → 识别并拦截截图结果 → 存为当前 screenshot base64 |
 
 **交付物**：
-- `vision/mimo-client.ts` — MiMo API 封装
+- `vision/vision-client.ts` — Vision API 封装
 - `vision/metrics.ts` — 4 项量化指标计算
 - `vision/prompts.ts` — Vision prompt 模板
 - `tools/assess-lighting.ts` — assess_lighting 工具完整实现
@@ -577,12 +584,12 @@ Session Start
 - [ ] `assess_lighting("sunset_beach.png")` → 返回结构正确的 JSON（8 维度 rating + gaps + artificiality）
 - [ ] 对同一张参考图 + 同一张截图 → 连续 5 次调用 → gaps 的 gap 级别（major/moderate/minor）一致率 ≥ 80%
 - [ ] 量化指标的计算结果与 Python harness 的 `compute_match_metrics()` 一致（误差 < 5%）
-- [ ] MiMo 调用失败时 → 返回 `{error: "vision_unavailable"}` → 不阻断主流程
+- [ ] Vision 调用失败时 → 返回 `{error: "vision_unavailable"}` → 不阻断主流程
 - [ ] artificiality 检测：给一张 PostProcess 滤镜过度的场景 → `artificiality.detected = true`
 - [ ] Vision token 消耗：每次 `assess_lighting` ≤ 3000 output tokens
 
 **风险**：
-- MiMo 不稳定（Python harness 已有记录）→ 需要 whitelist fallback 策略
+- Vision 不稳定（Python harness 已有记录）→ 需要 whitelist fallback 策略
 - Vision rating 的一致性（同一场景多次评定）→ 允许 ±1 rating 波动，gap 判定用硬编码阈值而非 LLM 直接输出
 
 **预期代码量**：~1000–1500 行 TS
@@ -601,7 +608,7 @@ Session Start
 
 | # | 任务 | 详情 |
 |:--:|------|------|
-| 4.1 | map_atmosphere 实现 | 5 类组件 `find_actors` + `list_properties` + MiMo classify/whitelist fallback + 3 Tier 编排 + current_value 回填 |
+| 4.1 | map_atmosphere 实现 | 5 类组件 `find_actors` + `list_properties` + Vision classify/whitelist fallback + 3 Tier 编排 + current_value 回填 |
 | 4.2 | whitelist fallback | 从 Python harness 迁移 ~50 个已知氛围属性的硬编码映射（dimension → 属性名模式） |
 | 4.3 | check_dimension 实现 | 参考图 + 当前截图 → Vision 单维度提问 → closer/similar/further + rating diff |
 | 4.4 | 截图复用 | `assess_lighting` 的截图结果缓存 30s，`check_dimension` 如果距离上次截图 < 30s 且场景无变化 → 复用 |
@@ -615,7 +622,7 @@ Session Start
 - [ ] `map_atmosphere()` → 正确识别场景中所有 5 类氛围组件
 - [ ] 场景中只有 1 个 DirectionalLight → `found: true, count: 1`
 - [ ] 场景中没有 VolumetricCloud → `found: false, hint: "请调 add_to_scene_from_class 创建"`
-- [ ] whitelist fallback：MiMo 不可用时 → 仍输出维度→属性映射（覆盖率 ≥ 80%）
+- [ ] whitelist fallback：Vision 不可用时 → 仍输出维度→属性映射（覆盖率 ≥ 80%）
 - [ ] `check_dimension(ref, "color_temperature")` → Vision output ≤ 300 tokens
 - [ ] 连续 3 次相同的 `check_dimension` 调用 → verdict 一致率 ≥ 80%
 
@@ -675,7 +682,7 @@ Session Start
 | 6.2 | color-diagnostics | 7 种色调偏移类型识别决策树。root cause → priority action 映射。人工感检测增强（配合 artificiality） |
 | 6.3 | 架构文档 | 扩展架构概述、工具 API 文档、工作流设计说明、配置指南（.env 中的 MIMO_API_KEY、UE_MCP_URL 等） |
 | 6.4 | 可观测性 | 工具调用日志（结合 Pi 原生 SessionManager）、Vision token 消耗统计、Phase 转换历史、gap 变化趋势 |
-| 6.5 | 错误恢复 | UE MCP 连接断开 → 自动重连 + 提示 LLM。MiMo 超时 → fallback。工具调用异常 → 结构化错误反馈 |
+| 6.5 | 错误恢复 | UE MCP 连接断开 → 自动重连 + 提示 LLM。Vision 超时 → fallback。工具调用异常 → 结构化错误反馈 |
 
 **交付物**：
 - `skills/match-atmosphere.md`
@@ -726,7 +733,7 @@ Issue 003        Issue 004
 |:--:|:--:|:--:|------|
 | 001 | 2–3 天 | 3 天 | `@modelcontextprotocol/sdk` 与 UE 5.8 MCP 实现的兼容性 |
 | 002 | 1–2 周 | 2 周 | JSON Schema 复杂构造（oneOf + $ref 嵌套）的 TypeBox 转换 |
-| 003 | 1–2 周 | 4 周 | MiMo API 稳定性、Vision rating 一致性 |
+| 003 | 1–2 周 | 4 周 | Vision API 稳定性、Vision rating 一致性 |
 | 004 | 1 周 | 5 周 | whitelist 覆盖率 |
 | 005 | 1–2 周 | 7 周 | 状态机边界 case（UE 重连后状态恢复） |
 | 006 | 1 周 | 8 周 | — |
@@ -737,16 +744,55 @@ Issue 003        Issue 004
 
 ## 8. 配置与环境变量
 
-扩展需要以下环境变量（通过 `.env` 或 Pi settings）：
+### 8.1 API Key 说明
 
-| 变量 | 用途 | 必需 |
-|------|------|:--:|
-| `UE_MCP_URL` | UE MCP Server 地址 | ✅ |
-| `MIMO_API_KEY` | MiMo Vision API key | ✅ |
-| `MIMO_API_BASE_URL` | MiMo API 端点 (默认: `https://token-plan-cn.xiaomimimo.com/anthropic`) | ❌ |
-| `VISION_MAX_TOKENS` | Vision 每次调用最大 output token (默认: 3000) | ❌ |
-| `UE_MCP_TIMEOUT_MS` | UE 工具调用超时毫秒 (默认: 60000) | ❌ |
-| `UE_MCP_RECONNECT_MAX` | 连接断开后最大重连次数 (默认: 3) | ❌ |
+扩展涉及 **两个独立的 API endpoint**：
+
+| 用途 | Provider | 认证方式 | 说明 |
+|------|---------|---------|------|
+| **文本对话** (Agent 推理、调参决策) | Pi Agent 默认模型 | Pi 原生 `auth.json` / 环境变量 | 用户在 Pi 启动时已配置。扩展不管理此 key |
+| **视觉分析** (截图评估、氛围判断) | Vision API (Claude/GPT/其他) | 独立 API key，通过环境变量传入 | 可与文本模型不同。支持跨 provider |
+
+**设计原则**：Vision 调用使用 `streamSimple()` 的独立调用模式（[06-tools-and-skills.md](../Pi-migration-docs/Pi-Docs/06-tools-and-skills.md#58-streamsimple-vs-agent-使用的区别)），不经过 Agent 循环。因此需要一个独立的 API key，允许用户为 Vision 选择与文本对话不同的模型/provider。
+
+### 8.2 Vision Auth 文件（推荐）
+
+Vision API key 存储在 `~/.pi/agent/vision-auth.json`，与 Pi 文本模型 key 的 `auth.json` 平行管理。
+
+**文件路径**：`~/.pi/agent/vision-auth.json`
+
+**文件格式**：
+```json
+{
+  "apiKey": "sk-ant-api03-...",
+  "baseUrl": "https://api.anthropic.com",
+  "modelId": "claude-sonnet-5-20251001"
+}
+```
+
+三个字段中只有 `apiKey` 是必需的。`baseUrl` 和 `modelId` 有默认值。
+
+### 8.3 环境变量（覆盖用）
+
+以下环境变量会覆盖 `vision-auth.json` 中的同名配置：
+
+| 变量 | 覆盖字段 | 默认值 |
+|------|---------|------|
+| `VISION_API_KEY` | `apiKey` | — |
+| `VISION_API_BASE_URL` | `baseUrl` | `https://api.anthropic.com` |
+| `VISION_MODEL_ID` | `modelId` | `claude-sonnet-5-20251001` |
+| `VISION_MAX_TOKENS` | — (仅环境变量) | `3000` |
+| `UE_MCP_URL` | — (仅环境变量) | `http://localhost:8000/mcp` |
+| `UE_MCP_TIMEOUT_MS` | — (仅环境变量) | `60000` |
+| `UE_MCP_RECONNECT_MAX` | — (仅环境变量) | `3` |
+
+### 8.4 配置加载优先级
+
+```
+1. process.env.VISION_API_KEY        ← 环境变量 (最高优先级)
+2. ~/.pi/agent/vision-auth.json      ← 持久化文件 (推荐)
+3. 默认值 (Anthropic 原生端点)
+```
 
 ---
 
@@ -756,7 +802,7 @@ Issue 003        Issue 004
 2. **L2 Readback 拦截器**：不在扩展中做写后自动读回验证。UE 工具的返回值已包含操作结果
 3. **LevelPersistenceToolset 集成**：不依赖 UE 侧插件的 fingerprint/dirty/save 工具
 4. **Vision Session 持久化**：不跨 Session 保存 Vision 分析历史。不做截图复用超过 30s
-5. **多语言/多模型支持**：仅支持 MiMo Vision API + Pi 默认文本模型。不实现多 provider 路由
+5. **多语言/多模型支持**：仅支持 Vision Vision API + Pi 默认文本模型。不实现多 provider 路由
 6. **TUI 自定义组件**：不开发 Pi TUI 层的光照专用 UI 组件
 7. **自动化测试框架集成**：不在本次 PRD 范围内。测试以手动端到端 + issue 验证标准为准
 
