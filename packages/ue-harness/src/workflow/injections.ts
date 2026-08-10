@@ -9,7 +9,7 @@
  */
 
 import type { GapEntry, PhaseState } from "./phase-machine.ts";
-import { getFurtherStage } from "./phase-machine.ts";
+import { getDimensionTrends, getFurtherStage, isTierOneSettled } from "./phase-machine.ts";
 
 // ── Phase 模板 ──
 
@@ -113,6 +113,8 @@ export function buildGapSummary(state: PhaseState): string {
 	const entries = state.lastGapEntries;
 	if (!entries || entries.length === 0) return "";
 
+	const trends = getDimensionTrends(state);
+
 	// 按 Tier 分组
 	const tierNames: Record<number, string> = {
 		0: "PRIORITY",
@@ -144,6 +146,20 @@ export function buildGapSummary(state: PhaseState): string {
 				line += `\n${"".padEnd(35)}ref ${e.quantitative.refValue} -> cur ${e.quantitative.curValue} (delta ${e.quantitative.delta})`;
 			}
 
+			// 趋势 (如果有历史数据)
+			const trend = trends[e.dimension];
+			if (trend) {
+				const trendLabel =
+					trend.status === "converging"
+						? "converging (趋向参考,建议考虑进入下一Tier)"
+						: trend.status === "oscillating"
+							? "oscillating (方向反复,可能已接近极限)"
+							: trend.status === "worsening"
+								? "worsening (方向错误,请反向调整)"
+								: "stable (无显著变化)";
+				line += `\n${"".padEnd(35)}trend: ${trend.history} ${trendLabel}`;
+			}
+
 			// Vision 定性描述 (如果有)
 			if (e.qualitative) {
 				line += `\n${"".padEnd(35)}${e.qualitative}`;
@@ -162,6 +178,15 @@ export function buildGapSummary(state: PhaseState): string {
 					? "中 (存在整体色调偏差)"
 					: "高";
 		summary += `\n直方图相关性: ${state.lastHistogramCorrelation.toFixed(2)} (${corrLabel})\n`;
+	}
+
+	// 收敛建议: 如果 Tier 1 各维度都已收敛或波动, 提示 LLM 考虑进入下一 Tier
+	if (state.phase === "TUNING" && state.tier === 1 && state.assessCount >= 2) {
+		if (isTierOneSettled(state)) {
+			summary +=
+				"\n[Tier 1 各量化维度已基本收敛或波动。继续调 Tier 1 可能收益递减。]\n" +
+				"[建议: 调 assess_lighting 确认状态后，考虑进入 Tier 2。]\n";
+		}
 	}
 
 	if (state.assessCount > 0) {

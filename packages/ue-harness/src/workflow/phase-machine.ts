@@ -42,6 +42,8 @@ export interface PhaseState {
 	consecutiveSameDimensionFurther: number; // 同一维度连续 further 次数
 	/** 上一轮各维度的量化数值 (ref/cur)，用于数值级 delta 收敛判定 */
 	lastQuantitative: Record<string, { refValue: number; curValue: number }>;
+	/** 最近 3 轮各维度的 delta 绝对值历史 (dimension → deltas, newest last) */
+	quantitativeHistory: Record<string, number[]>;
 }
 
 // ── 初始状态 ──
@@ -60,6 +62,7 @@ export function createInitialState(): PhaseState {
 		lastCheckDimension: null,
 		consecutiveSameDimensionFurther: 0,
 		lastQuantitative: {},
+		quantitativeHistory: {},
 	};
 }
 
@@ -221,7 +224,7 @@ function computeUnchangedRounds(state: PhaseState, gaps: AssessLightingResult["g
 	return 0; // 有改善 → 重置
 }
 
-/** 从 gaps 中提取量化数值，存储到 state 供下一轮比较 */
+/** 从 gaps 中提取量化数值，存储到 state 供下一轮比较 + 维护 delta 历史 */
 function storeQuantitative(state: PhaseState, gaps: AssessLightingResult["gaps"] | undefined): void {
 	if (!gaps) return;
 	const quantitative: Record<string, { refValue: number; curValue: number }> = {};
@@ -232,9 +235,78 @@ function storeQuantitative(state: PhaseState, gaps: AssessLightingResult["gaps"]
 				refValue: gapEntry.quantitative.refValue,
 				curValue: gapEntry.quantitative.curValue,
 			};
+			const delta = Math.abs(gapEntry.quantitative.refValue - gapEntry.quantitative.curValue);
+			if (!state.quantitativeHistory[dim]) state.quantitativeHistory[dim] = [];
+			state.quantitativeHistory[dim].push(delta);
+			// 保留最近 3 轮
+			if (state.quantitativeHistory[dim].length > 3) {
+				state.quantitativeHistory[dim].shift();
+			}
 		}
 	}
 	state.lastQuantitative = quantitative;
+}
+
+/** 单维度趋势信息 */
+export interface DimensionTrendInfo {
+	history: string; // 趋势摘要文本，如 "+56.6% -> +27.7% -> +21.9% [+]"
+	status: "converging" | "oscillating" | "worsening" | "stable";
+}
+
+/** 获取所有维度的趋势信息，供 buildGapSummary 使用 */
+export function getDimensionTrends(state: PhaseState): Record<string, DimensionTrendInfo> {
+	const result: Record<string, DimensionTrendInfo> = {};
+	for (const dim of QUANTITATIVE_DIMS) {
+		const history = state.quantitativeHistory[dim];
+		if (!history || history.length < 2) continue;
+
+		const entries = history.map((d) => `${d.toFixed(1)}`);
+		// 判定趋势
+		let improving = false;
+		let worsening = false;
+		for (let i = 1; i < history.length; i++) {
+			const ratio = history[i] / history[i - 1];
+			if (ratio < 0.9) improving = true;
+			else if (ratio > 1.1) worsening = true;
+		}
+
+		let status: DimensionTrendInfo["status"];
+		let marker: string;
+		if (improving && !worsening) {
+			status = "converging";
+			marker = "[+]";
+		} else if (worsening && !improving) {
+			status = "worsening";
+			marker = "[-]";
+		} else if (improving && worsening) {
+			status = "oscillating";
+			marker = "[~]";
+		} else {
+			status = "stable";
+			marker = "[=]";
+		}
+
+		const historyText = `${entries.join(" -> ")} ${marker}`;
+
+		result[dim] = { history: historyText, status };
+	}
+	return result;
+}
+
+/** 检查是否所有有量化数据的 Tier 1 维度都已收敛或波动 */
+export function isTierOneSettled(state: PhaseState): boolean {
+	const trends = getDimensionTrends(state);
+	const tier1Dims = QUANTITATIVE_DIMS.filter((d) => {
+		const gap = state.lastGapEntries.find((g) => g.dimension === d);
+		return gap?.tier === 1;
+	});
+
+	if (tier1Dims.length === 0) return false;
+
+	return tier1Dims.every((d) => {
+		const t = trends[d];
+		return t && (t.status === "converging" || t.status === "oscillating" || t.status === "stable");
+	});
 }
 
 // ── 硬上限检查 ──
