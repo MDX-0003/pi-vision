@@ -23,7 +23,7 @@
 LLM 调参完成 → 用户确认满意
        │
        ▼
-  LLM 调 save_preset(name, description, reference_path)
+  LLM 调 save_preset(name, reference_path)
        │
        ├── 拷贝参考图 (如果路径有效)
        │     cp <reference_path> → ~/.pi/agent/presets/<name>/<original_filename>
@@ -46,7 +46,6 @@ LLM 调参完成 → 用户确认满意
 ```json
 {
   "name": "golden-hour-sunset",
-  "description": "Warm golden hour sunset with low-angle light, orange-purple sky gradient, heavy atmospheric fog with warm inscattering",
   "atmosphere_signature": {
     "light_direction":   { "rating": 4, "desc": "low-angle side light from right" },
     "color_temperature": { "rating": 5, "desc": "warm golden" },
@@ -127,13 +126,13 @@ LLM 调参完成 → 用户确认满意
               请调 load_preset('preset-name') 加载。]"
 ```
 
-命中判断由三部分组成：
+命中判断由单一信号组成：
 
 | 信号 | 权重 | 说明 |
 |------|:--:|------|
-| 8 维度 rating 余弦相似度 | 0.6 | 两个 8 维 rating 向量 [4,5,2,4,1,3,4,5] vs [5,5,1,3,1,2,3,4] 的余弦距离 |
-| 描述关键词重叠 | 0.3 | "low-angle warm sunset fog" vs "warm golden hour fog" — 词级 Jaccard 相似度 |
-| 色温方向一致性 | 0.1 | 都是 warm → +0.1；一冷一暖 → 0；都是 neutral → +0.05 |
+| 8 维度 rating 余弦相似度 | 1.0 | 两个 8 维 rating 向量 [4,5,2,4,1,3,4,5] vs [5,5,1,3,1,2,3,4] 的余弦距离 |
+
+不使用描述文本匹配——氛围特征签名已经足够区分预设。
 
 ### 2.3 应用流程
 
@@ -224,7 +223,7 @@ save_preset("golden-hour-sunset", "Warm golden hour sunset...", "sunset_beach.pn
 list_presets()
   → 返回: {
       presets: [
-        { name: "golden-hour-sunset", description: "...", created: "...",
+        { name: "golden-hour-sunset", created: "...",
           atmosphere_signature: {...},
           reference_image: "sunset_beach.png" },
         { name: "purple-dusk", ... }
@@ -236,9 +235,14 @@ list_presets()
 
 ```
 load_preset("golden-hour-sunset")
-  → 内部: applyPreset(preset)
+  → 内部:
+    1. 加载 preset.json + 读取 reference_image 路径
+    2. applyPreset(preset): 批量设置场景属性
+    3. 更新内部 reference_path 状态: 指向预设目录下的参考图副本
+       后续 assess_lighting 和 check_dimension 自动使用此副本，无需 LLM 再次传参
   → 返回: {
       loaded: true,
+      reference_image: "sunset_beach.png (已切换为此预设的参考图)",
       applied: { DirectionalLight_0: 6, SkyLight_0: 2, SkyAtmosphere_0: 4, ExponentialHeightFog_0: 4 },
       skipped: { VolumetricCloud_0: "actor not found in scene" },
       reset_postprocess: true
@@ -284,17 +288,19 @@ delete_preset("golden-hour-sunset")
 条件:
   1. assess_lighting 已完成 (state.phase >= TUNING)
   2. state.lastGapEntries 中有参考图的氛围数据
-  3. matchPresets 找到至少一个匹配分 >= 0.6 的预设
+  3. matchPresets 找到至少一个余弦相似度 >= 0.85 的预设
   4. 当前轮次 <= 2 (首次 assess_lighting 后的前两轮——避免重复注入)
 
 注入文本:
   ## 匹配的预设
 
   以下预设与当前参考图的氛围特征相似，可能提供更好的调参起点:
-    [1] golden-hour-sunset (匹配度: 0.87)
-        Warm golden hour sunset with low-angle light, orange-purple sky...
-    [2] purple-dusk (匹配度: 0.72)
-        Purple-pink dusk with soft fog and cool shadows...
+    [1] golden-hour-sunset (匹配度: 0.92)
+        atmosphere: light_direction=4, color_temperature=5, brightness=2,
+                   atmosphere=4, shadow_depth=5
+    [2] purple-dusk (匹配度: 0.88)
+        atmosphere: light_direction=3, color_temperature=4, brightness=1,
+                   atmosphere=3, color_cast=3
 
   如果你认为某个预设比当前默认场景更适合作为起点:
     调 load_preset('name') 批量应用该预设
@@ -313,39 +319,61 @@ function findMatchingPresets(refAtmosphere, presets):
   results = []
 
   for each preset:
-    // 1. 8 维 rating 余弦相似度
-    refVec    = [refDim1.rating, refDim2.rating, ..., refDim8.rating]
-    presetVec = [preDim1.rating, preDim2.rating, ..., preDim8.rating]
+    // 8 维 rating 余弦相似度
+    dims = ["light_direction","color_temperature","brightness","contrast",
+            "color_cast","saturation","atmosphere","shadow_depth"]
+    refVec    = dims.map(d => refAtmosphere[d].rating)
+    presetVec = dims.map(d => preset.atmosphere_signature[d].rating)
     cosineSim = dot(refVec, presetVec) / (norm(refVec) * norm(presetVec))
 
-    // 2. 描述关键词重叠
-    refWords   = tokenize(refAtmosphere 各维度 desc 拼接)
-    presetWords = tokenize(preset.description)
-    keywordSim = |refWords ∩ presetWords| / |refWords ∪ presetWords|
+    if cosineSim >= 0.85:
+      results.push({ name, score: cosineSim })
 
-    // 3. 色温方向一致性
-    refColorTemp = refAtmosphere.color_temperature
-    presetColorTemp = preset.atmosphere_signature.color_temperature
-    if both warm or both cool: tempSim = 1.0
-    elif one warm and one cool: tempSim = 0
-    else: tempSim = 0.5  // neutral 混合
-
-    totalScore = 0.6 * cosineSim + 0.3 * keywordSim + 0.1 * tempSim
-
-    if totalScore >= 0.6:
-      results.push({ name, totalScore, description })
-
-  return results.sortedBy(totalScore.desc).slice(0, 3)
+  return results.sortedBy(score.desc).slice(0, 3)
 ```
 
 ---
 
-## 8. 不改动范围
+## 8. reference_path 内部状态机制
+
+加载预设后，扩展内部维护一个 `_activeReferencePath` 变量。`assess_lighting` 和 `check_dimension` 在调用时如果未显式传参，自动使用此路径：
+
+```
+load_preset("golden-hour-sunset")
+  → _activeReferencePath = "~/.pi/agent/presets/golden-hour-sunset/sunset_beach.png"
+
+后续 LLM 调:
+  assess_lighting()              ← 自动用 _activeReferencePath
+  check_dimension("brightness")  ← 自动用 _activeReferencePath
+
+如果 LLM 想切换回手动模式:
+  assess_lighting("other_ref.png")  ← 显式传参会覆盖 _activeReferencePath
+```
+
+---
+
+## 9. 快照范围
+
+只快照 5 类氛围组件，不包含 PostProcessVolume 的属性：
+
+| 组件类型 | 快照内容 |
+|------|------|
+| DirectionalLight | LightColor, Intensity, Temperature, LightSourceAngle + transform (rotation) |
+| SkyLight | LightColor, Intensity |
+| SkyAtmosphere | MieScatteringScale, MieScattering, MieExponentialDistribution, RayleighScatteringScale |
+| ExponentialHeightFog | FogDensity, FogHeightFalloff, FogInscatteringLuminance, DirectionalInscatteringExponent |
+| VolumetricCloud | LayerBottomAltitude, LayerHeight, bVisible |
+
+PostProcessVolume 不存储具体属性——只存储 `postprocess_reset: true` 标记。加载预设时若此标记为 true，将 PostProcessVolume 回退到默认值。
+
+---
+
+## 10. 不改动范围
 
 1. **不自动应用预设**: LLM 始终需要主动调 `load_preset`。预设只是建议，不是强制
 2. **不跨 UE 项目共享预设**: 预设绑定到 actor refPath（包含项目名如 `/Game/Main.Main:PersistentLevel.`），不同 UE 项目的 actor 路径不同
-3. **不保存非氛围属性**: 只快照 5 类氛围组件（DirectionalLight, SkyLight, SkyAtmosphere, ExponentialHeightFog, VolumetricCloud）+ PostProcessVolume 回退标记。不保存材质、几何、蓝图属性
-4. **不依赖 Vision API**: 预设匹配在 Vision 不可用时退化为纯关键词匹配
+3. **不保存非氛围属性**: 只快照 5 类氛围组件 + PostProcessVolume 回退标记。不保存材质、几何、蓝图属性
+4. **不维护 description 文本**: 匹配仅基于 8 维 rating 余弦相似度。LLM 看到的是 rating 向量而非自然语言描述
 
 ---
 
