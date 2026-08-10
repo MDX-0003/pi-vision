@@ -23,7 +23,7 @@
 LLM 调参完成 → 用户确认满意
        │
        ▼
-  LLM 调 save_preset(name, reference_path)
+  LLM 调 save_preset(name, description, reference_path)
        │
        ├── 拷贝参考图 (如果路径有效)
        │     cp <reference_path> → ~/.pi/agent/presets/<name>/<original_filename>
@@ -46,6 +46,7 @@ LLM 调参完成 → 用户确认满意
 ```json
 {
   "name": "golden-hour-sunset",
+  "description": "Warm golden hour sunset over ocean beach, low-angle light, purple-orange sky gradient, heavy atmospheric fog with warm inscattering",
   "atmosphere_signature": {
     "light_direction":   { "rating": 4, "desc": "low-angle side light from right" },
     "color_temperature": { "rating": 5, "desc": "warm golden" },
@@ -126,13 +127,25 @@ LLM 调参完成 → 用户确认满意
               请调 load_preset('preset-name') 加载。]"
 ```
 
-命中判断由单一信号组成：
+命中判断由双门控组成：
 
-| 信号 | 权重 | 说明 |
-|------|:--:|------|
-| 8 维度 rating 余弦相似度 | 1.0 | 两个 8 维 rating 向量 [4,5,2,4,1,3,4,5] vs [5,5,1,3,1,2,3,4] 的余弦距离 |
+```
+Gate 1 — 描述准入 (必须通过):
+  参考图的 Vision 氛围描述 vs 预设的 description 文本
+  方法: 关键词 Jaccard 相似度 (交集/并集)
+  阈值: >= 0.25 (至少 1/4 的关键词重叠)
+  不通过 → 跳过此预设 (即使氛围评分高也不匹配)
 
-不使用描述文本匹配——氛围特征签名已经足够区分预设。
+Gate 2 — 氛围排序 (通过 Gate 1 后):
+  参考图 8 维 rating 向量 vs 预设的 atmosphere_signature 向量
+  方法: 余弦相似度
+  阈值: >= 0.85 才注入建议
+```
+
+| 门控 | 作用 | 防止什么 |
+|------|------|---------|
+| 描述准入 | 场景类型一致 | "海滩夕阳" 的预设不会被 "城市夜景" 的参考图命中 |
+| 氛围排序 | 光照氛围接近 | 同一场景类型中，筛选最接近的氛围 |
 
 ### 2.3 应用流程
 
@@ -223,7 +236,7 @@ save_preset("golden-hour-sunset", "Warm golden hour sunset...", "sunset_beach.pn
 list_presets()
   → 返回: {
       presets: [
-        { name: "golden-hour-sunset", created: "...",
+        { name: "golden-hour-sunset", description: "Warm golden hour...", created: "...",
           atmosphere_signature: {...},
           reference_image: "sunset_beach.png" },
         { name: "purple-dusk", ... }
@@ -296,9 +309,11 @@ delete_preset("golden-hour-sunset")
 
   以下预设与当前参考图的氛围特征相似，可能提供更好的调参起点:
     [1] golden-hour-sunset (匹配度: 0.92)
+        Warm golden hour sunset over ocean beach, low-angle light...
         atmosphere: light_direction=4, color_temperature=5, brightness=2,
                    atmosphere=4, shadow_depth=5
     [2] purple-dusk (匹配度: 0.88)
+        Purple-pink dusk with soft fog over mountain silhouette...
         atmosphere: light_direction=3, color_temperature=4, brightness=1,
                    atmosphere=3, color_cast=3
 
@@ -316,10 +331,20 @@ delete_preset("golden-hour-sunset")
 ```
 function findMatchingPresets(refAtmosphere, presets):
 
+  // 拼接参考图各维度 desc 作为"查询描述"
+  refDesc = refAtmosphere各维度desc.join(" ")
+
   results = []
 
   for each preset:
-    // 8 维 rating 余弦相似度
+    // Gate 1: 描述准入 — 关键词 Jaccard 相似度
+    refWords   = tokenize(refDesc)
+    presetWords = tokenize(preset.description)
+    jaccard = |refWords ∩ presetWords| / |refWords ∪ presetWords|
+
+    if jaccard < 0.25: continue  // 场景类型差异太大，跳过
+
+    // Gate 2: 氛围排序 — 8 维 rating 余弦相似度
     dims = ["light_direction","color_temperature","brightness","contrast",
             "color_cast","saturation","atmosphere","shadow_depth"]
     refVec    = dims.map(d => refAtmosphere[d].rating)
@@ -327,7 +352,7 @@ function findMatchingPresets(refAtmosphere, presets):
     cosineSim = dot(refVec, presetVec) / (norm(refVec) * norm(presetVec))
 
     if cosineSim >= 0.85:
-      results.push({ name, score: cosineSim })
+      results.push({ name, description: preset.description, score: cosineSim })
 
   return results.sortedBy(score.desc).slice(0, 3)
 ```
@@ -373,7 +398,6 @@ PostProcessVolume 不存储具体属性——只存储 `postprocess_reset: true`
 1. **不自动应用预设**: LLM 始终需要主动调 `load_preset`。预设只是建议，不是强制
 2. **不跨 UE 项目共享预设**: 预设绑定到 actor refPath（包含项目名如 `/Game/Main.Main:PersistentLevel.`），不同 UE 项目的 actor 路径不同
 3. **不保存非氛围属性**: 只快照 5 类氛围组件 + PostProcessVolume 回退标记。不保存材质、几何、蓝图属性
-4. **不维护 description 文本**: 匹配仅基于 8 维 rating 余弦相似度。LLM 看到的是 rating 向量而非自然语言描述
 
 ---
 
