@@ -1,10 +1,15 @@
 /**
- * Issue 005 — before_agent_start 上下文注入
+ * Issue 007 — before_agent_start 上下文注入
  *
  * 根据当前 Phase/Tier 状态生成 system prompt 追加文本。
  * 告诉 LLM 当前处于什么阶段、可以做什么、禁止做什么。
+ *
+ * 2026-08-10 重构: gap 摘要改为按 Tier 分组的维度明细表 (量化数字 + 方向描述);
+ * 新增阻塞维度摘要 + check_dimension further 三阶段引导。
  */
-import type { PhaseState } from "./phase-machine.ts";
+
+import type { GapEntry, PhaseState } from "./phase-machine.ts";
+import { getFurtherStage } from "./phase-machine.ts";
 
 // ── Phase 模板 ──
 
@@ -19,7 +24,25 @@ const PHASE_TEMPLATES: Record<string, (s: PhaseState) => string> = {
 禁止在 SETUP 阶段直接调参或截图——这些操作会被自动阻止。
 `,
 
-	TUNING: (s) => `
+	TUNING: (s) => {
+		const furtherStage = getFurtherStage(s);
+
+		let furtherGuidance = "";
+		if (furtherStage === 1) {
+			furtherGuidance = `
+注意: check_dimension 返回 further (维度: ${s.lastCheckDimension || "?"})。
+当前方向可能反了，请尝试反向调整，或检查是否受阻塞维度影响。`;
+		} else if (furtherStage === 2) {
+			furtherGuidance = `
+[ACTION REQUIRED] check_dimension 连续 2 次 further (维度: ${s.lastCheckDimension || "?"})。
+可能原因:
+  1. 调整方向持续错误 -- 请尝试反向调整
+  2. 受阻塞维度影响 -- 请先解决阻塞维度，再回到此维度
+  3. 调整量太小 -- 请增大参数变化幅度
+操作: 回退此维度的改动，然后选择上述任一排查方向。`;
+		}
+
+		return `
 ## 当前阶段: TUNING (Tier ${s.tier})
 
 你正在调整 Tier ${s.tier} 的参数。
@@ -28,12 +51,11 @@ ${s.tier === 2 ? "只能调 SkyAtmosphere / ExponentialHeightFog / VolumetricClo
 ${s.tier === 3 ? "可以调 PostProcessVolume 的属性 (whiteTemp, colorSaturation, colorContrast 等)。" : ""}
 
 规则:
-  · 可以批量修改参数，不需要每改一个就截图
-  · 修改完一批参数后，调 check_dimension(reference_path, dimension) 验证方向
-  · 当前 Tier 所有维度 gap=minor 后，调 assess_lighting(reference_path) 进入下一 Tier
-  · 跨 Tier 调参会自动被阻止${s.unchangedRounds > 0 ? `\n  ⚠️ 已连续 ${s.unchangedRounds} 轮 gap 无变化——请考虑换一个参数或维度` : ""}
-${s.artificialityDetected ? "\n  ⚠️ 检测到人工后期感——请回退 PostProcess 到默认值，从真实光源开始调整" : ""}
-`,
+  - 可以批量修改参数，不需要每改一个就截图
+  - 修改完一批参数后，调 check_dimension(reference_path, dimension) 验证方向
+  - 当前 Tier 所有维度 gap=minor 后，调 assess_lighting(reference_path) 进入下一 Tier
+  - 跨 Tier 调参会自动被阻止${s.unchangedRounds > 0 ? `\n  - 警告: 已连续 ${s.unchangedRounds} 轮 gap 无变化 -- 请考虑换一个参数或维度` : ""}${s.artificialityDetected ? "\n  - 警告: 检测到人工后期感 -- 请回退 PostProcess 到默认值，从真实光源开始调整" : ""}${furtherGuidance}`;
+	},
 
 	POSTPROCESS_SETUP: (_s) => `
 ## 当前阶段: POSTPROCESS_SETUP
@@ -57,11 +79,11 @@ ${s.artificialityDetected ? "\n  ⚠️ 检测到人工后期感——请回退 
   1. 调 assess_lighting(reference_path) 做最后一次全维度检查
   2. 特别关注 artificiality 字段——如果检测到人工感，需要回退 PostProcess 重新开始
 
-如果所有维度 gap=minor 且无人工感 → 调参完成。
+如果所有维度 gap=minor 且无人工感 -> 调参完成。
 `,
 
 	DONE: (_s) => `
-## 当前阶段: DONE ✅
+## 当前阶段: DONE
 
 所有维度的光照氛围已接近参考图。调参流程完成。
 `,
@@ -74,22 +96,77 @@ export function buildPhaseContext(state: PhaseState): string {
 	return template(state);
 }
 
-/** 构建 gap 摘要文本 */
+/** 构建 blocker 摘要文本 */
+export function buildBlockerSummary(state: PhaseState): string {
+	const blockers = state.blockingDimensions;
+	if (!blockers || blockers.length === 0) return "";
+
+	let summary = "\n## 阻塞维度 (必须先解决)\n\n";
+	for (const b of blockers) {
+		summary += `  [BLOCKED] ${b}\n`;
+	}
+	return summary;
+}
+
+/** 构建 gap 摘要文本 (按 Tier 分组的维度明细表) */
 export function buildGapSummary(state: PhaseState): string {
-	const gaps = state.lastGaps;
-	if (!gaps || Object.keys(gaps).length === 0) return "";
+	const entries = state.lastGapEntries;
+	if (!entries || entries.length === 0) return "";
 
-	const entries = Object.entries(gaps);
-	const majors = entries.filter(([, g]) => g === "major");
-	const moderates = entries.filter(([, g]) => g === "moderate");
-	const minors = entries.filter(([, g]) => g === "minor");
+	// 按 Tier 分组
+	const tierNames: Record<number, string> = {
+		0: "PRIORITY",
+		1: "Tier 1 -- CORE_LIGHTING (先解决)",
+		2: "Tier 2 -- ATMOSPHERE (Tier 1 完成后才能调)",
+		3: "Tier 3 -- POSTPROCESS (Tier 1-2 完成后才能调)",
+	};
 
-	let summary = "\n## 当前 Gap 状态\n\n";
-	if (majors.length > 0) summary += `🔴 major: ${majors.map(([d]) => d).join(", ")}\n`;
-	if (moderates.length > 0) summary += `🟡 moderate: ${moderates.map(([d]) => d).join(", ")}\n`;
-	if (minors.length > 0) summary += `🟢 minor: ${minors.map(([d]) => d).join(", ")}\n`;
-	if (state.assessCount > 0)
-		summary += `\nassess_lighting: ${state.assessCount}/15 | check_dimension: ${state.checkCount}/20`;
+	const byTier = new Map<number, GapEntry[]>();
+	for (const e of entries) {
+		const list = byTier.get(e.tier) || [];
+		list.push(e);
+		byTier.set(e.tier, list);
+	}
+
+	let summary = "\n## 当前 Gap 状态\n";
+
+	for (const tier of [0, 1, 2, 3]) {
+		const tierEntries = byTier.get(tier);
+		if (!tierEntries || tierEntries.length === 0) continue;
+
+		summary += `\n${tierNames[tier] || `Tier ${tier}`}:\n`;
+		for (const e of tierEntries) {
+			const severityLabel = e.gap === "major" ? "[MAJOR]" : e.gap === "moderate" ? "[MODERATE]" : "[MINOR]";
+			let line = `  ${e.dimension.padEnd(20)} ${severityLabel.padEnd(10)} ${e.direction}`;
+
+			// 量化数字 (如果有)
+			if (e.quantitative) {
+				line += `\n${"".padEnd(35)}ref ${e.quantitative.refValue} -> cur ${e.quantitative.curValue} (delta ${e.quantitative.delta})`;
+			}
+
+			// Vision 定性描述 (如果有)
+			if (e.qualitative) {
+				line += `\n${"".padEnd(35)}${e.qualitative}`;
+			}
+
+			summary += `${line}\n`;
+		}
+	}
+
+	// 直方图相关性
+	if (state.lastHistogramCorrelation < 1) {
+		const corrLabel =
+			state.lastHistogramCorrelation < 0.3
+				? "低 (画面整体色调分布差异大，检查是否存在结构性不匹配)"
+				: state.lastHistogramCorrelation < 0.5
+					? "中 (存在整体色调偏差)"
+					: "高";
+		summary += `\n直方图相关性: ${state.lastHistogramCorrelation.toFixed(2)} (${corrLabel})\n`;
+	}
+
+	if (state.assessCount > 0) {
+		summary += `\nassess_lighting: ${state.assessCount}/15  |  check_dimension: ${state.checkCount}/20`;
+	}
 
 	return summary;
 }

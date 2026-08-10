@@ -80,6 +80,8 @@ export interface AssessLightingResult {
 
 	artificiality?: ArtificialityResult;
 
+	blocking_dimensions?: string[];
+
 	meta?: {
 		visionTokens: number;
 		captureMs: number;
@@ -101,13 +103,52 @@ const DIMENSION_TIER: Record<string, number> = {
 	saturation: 3,
 };
 
-// ── gap 判定 ──
+// ── 量化阈值 ──
 
-function computeGap(refRating: number, curRating: number): "minor" | "moderate" | "major" {
-	const diff = Math.abs(refRating - curRating);
-	if (diff >= 3) return "major";
-	if (diff === 2) return "moderate";
-	return "minor";
+/** 量化指标 delta 绝对值 → gap 级别 */
+function quantitativeGap(dimension: string, deltaAbs: number): "minor" | "moderate" | "major" | null {
+	switch (dimension) {
+		case "brightness":
+			if (deltaAbs <= 15) return "minor";
+			if (deltaAbs <= 30) return "moderate";
+			return "major";
+		case "color_temperature":
+			if (deltaAbs <= 0.15) return "minor";
+			if (deltaAbs <= 0.4) return "moderate";
+			return "major";
+		case "saturation":
+			if (deltaAbs <= 0.05) return "minor";
+			if (deltaAbs <= 0.15) return "moderate";
+			return "major";
+		default:
+			return null;
+	}
+}
+
+// ── gap 判定 (Vision + 量化双路校验) ──
+
+function computeGap(
+	dimension: string,
+	refRating: number,
+	curRating: number,
+	quantitativeDeltaAbs?: number,
+): "minor" | "moderate" | "major" {
+	const visionDiff = Math.abs(refRating - curRating);
+	let visionGap: "minor" | "moderate" | "major";
+	if (visionDiff >= 3) visionGap = "major";
+	else if (visionDiff === 2) visionGap = "moderate";
+	else visionGap = "minor";
+
+	if (quantitativeDeltaAbs !== undefined) {
+		const quantGap = quantitativeGap(dimension, quantitativeDeltaAbs);
+		if (quantGap) {
+			// 取两者中最严重的
+			const severity: Record<string, number> = { minor: 0, moderate: 1, major: 2 };
+			return severity[quantGap] > severity[visionGap] ? quantGap : visionGap;
+		}
+	}
+
+	return visionGap;
 }
 
 function computeDirection(dimension: string, refRating: number, curRating: number): string {
@@ -128,7 +169,49 @@ function computeDirection(dimension: string, refRating: number, curRating: numbe
 	return diff > 0 ? whenRefHigher : whenCurHigher;
 }
 
+// ── 阻塞维度检测 ──
+
+function findBlockers(
+	gaps: DimensionGap[],
+	artificiality: ArtificialityResult | undefined,
+	histogramCorrelation: number,
+): string[] {
+	const blockers: string[] = [];
+
+	// 规则 1: light_direction 如果 gap 非 minor 且直方图相关性低 → blocker
+	const lightGap = gaps.find((g) => g.dimension === "light_direction");
+	if (lightGap && lightGap.gap !== "minor" && histogramCorrelation < 0.5) {
+		blockers.push("light_direction (太阳角度差异 — 必须先解决，否则其他维度调整无效)");
+	}
+
+	// 规则 2: color_temperature 为 major → blocker
+	if (lightGap && lightGap.gap === "minor" && histogramCorrelation < 0.5) {
+		// light_direction 评级低但直方图相关性也低 → 结构性不匹配，仍可能是角度问题
+		if (!blockers.some((b) => b.startsWith("light_direction"))) {
+			blockers.push("light_direction (太阳角度差异 — Vision 评分接近但直方图相关性低，可能存在结构性不匹配)");
+		}
+	}
+
+	const colorGap = gaps.find((g) => g.dimension === "color_temperature");
+	if (colorGap && colorGap.gap === "major") {
+		blockers.push("color_temperature (全局色温偏差大 — 影响所有大气和雾的颜色表现)");
+	}
+
+	// 规则 3: artificiality → blocker
+	if (artificiality?.detected) {
+		blockers.push("post_processing (检测到人工滤镜感 — 回退 PostProcess 到默认值后重新评估)");
+	}
+
+	return blockers;
+}
+
 // ── helper ──
+
+function computeOverallGap(histogramCorrelation: number): "major" | "moderate" | null {
+	if (histogramCorrelation < 0.3) return "major";
+	if (histogramCorrelation < 0.5) return "moderate";
+	return null;
+}
 
 async function analyzeAtmosphere(vision: VisionClient, base64: string): Promise<AtmosphereAnalysis> {
 	const result = await vision.sendAndParse<AtmosphereAnalysis>({
@@ -227,21 +310,25 @@ export async function executeAssessLighting(params: { reference_path: string }):
 		const ratingDiff = refRating - curRating;
 		const tier = DIMENSION_TIER[dim] ?? 99;
 
-		// 量化数据 (只有部分维度有)
+		// 量化数据 (只有部分维度有) + 量化 delta 绝对值 (用于交叉校验)
 		let quantitative: DimensionGap["quantitative"] = null;
+		let quantDeltaAbs: number | undefined;
 		if (dim === "brightness") {
+			quantDeltaAbs = Math.abs(quantMetrics.luminanceDelta);
 			quantitative = {
 				refValue: quantMetrics.reference.luminance,
 				curValue: quantMetrics.current.luminance,
-				delta: `${quantMetrics.luminanceDelta.toFixed(1)}%`,
+				delta: `${quantMetrics.luminanceDelta > 0 ? "+" : ""}${quantMetrics.luminanceDelta.toFixed(1)}%`,
 			};
 		} else if (dim === "color_temperature") {
+			quantDeltaAbs = Math.abs(quantMetrics.colorTempRatioDelta);
 			quantitative = {
 				refValue: quantMetrics.reference.colorTempRatio,
 				curValue: quantMetrics.current.colorTempRatio,
 				delta: `${quantMetrics.colorTempRatioDelta > 0 ? "+" : ""}${quantMetrics.colorTempRatioDelta.toFixed(2)}`,
 			};
 		} else if (dim === "saturation") {
+			quantDeltaAbs = Math.abs(quantMetrics.saturationDelta);
 			quantitative = {
 				refValue: quantMetrics.reference.saturation,
 				curValue: quantMetrics.current.saturation,
@@ -252,13 +339,31 @@ export async function executeAssessLighting(params: { reference_path: string }):
 		gaps.push({
 			dimension: dim,
 			tier,
-			gap: computeGap(refRating, curRating),
+			gap: computeGap(dim, refRating, curRating, quantDeltaAbs),
 			direction: computeDirection(dim, refRating, curRating),
 			rating_diff: Math.abs(ratingDiff),
 			quantitative,
 			qualitative: Math.abs(ratingDiff) >= 2 ? `${refData.description} vs ${curData.description}` : null,
 		});
 	}
+
+	// 直方图相关性低 → 追加整体结构不匹配 pseudo-gap
+	const overallGap = computeOverallGap(quantMetrics.histogramCorrelation);
+	if (overallGap) {
+		gaps.push({
+			dimension: "overall_composition",
+			tier: 0,
+			gap: overallGap,
+			direction: "structural_mismatch",
+			rating_diff: 0,
+			quantitative: null,
+			qualitative:
+				"画面整体色调分布与参考图差异大。即使各维度 gap 都小，也可能存在结构性不匹配（如太阳角度、场景几何、参考图场景中的特殊元素）。",
+		});
+	}
+
+	// 阻塞维度检测
+	const blockingDimensions = findBlockers(gaps, artificiality, quantMetrics.histogramCorrelation);
 
 	// 按 gap severity + tier 排序
 	gaps.sort((a, b) => {
@@ -268,8 +373,6 @@ export async function executeAssessLighting(params: { reference_path: string }):
 		if (sa !== sb) return sa - sb;
 		return a.tier - b.tier;
 	});
-
-	const _priority = gaps.filter((g) => g.gap !== "minor").map((g) => g.dimension);
 
 	meta.visionTokens = 3 * 2000; // 3 Vision calls (ref, cur, artificiality) @ ~2000 each
 
@@ -303,6 +406,7 @@ export async function executeAssessLighting(params: { reference_path: string }):
 			histogramCorrelation: quantMetrics.histogramCorrelation,
 		},
 		artificiality,
+		blocking_dimensions: blockingDimensions,
 		meta,
 	};
 

@@ -19,7 +19,7 @@ import { convertTool } from "./ue-client/schema-converter.ts";
 import type { UeHarnessConfig } from "./ue-client/types.ts";
 import { VisionClient } from "./vision/vision-client.ts";
 import { checkToolCall } from "./workflow/guard-rules.ts";
-import { buildGapSummary, buildPhaseContext } from "./workflow/injections.ts";
+import { buildBlockerSummary, buildGapSummary, buildPhaseContext } from "./workflow/injections.ts";
 import { createInitialState, onAssessLighting, onCheckDimension, type PhaseState } from "./workflow/phase-machine.ts";
 
 // ── Vision auth 文件 ──
@@ -216,18 +216,26 @@ export default function ueHarnessExtension(pi: ExtensionAPI): void {
 		return undefined;
 	});
 
-	// ── Issue 005: tool_result → Phase 更新 ──
+	// ── Issue 007: tool_result → Phase 更新 ──
 	pi.on("tool_result", (event: any) => {
 		if (event.toolName === "assess_lighting") {
 			try {
 				const text = event.content?.[0]?.text || "";
 				const data = JSON.parse(text);
-				onAssessLighting(_phaseState, data.gaps, data.artificiality?.detected || false);
+				onAssessLighting(
+					_phaseState,
+					data.gaps,
+					data.artificiality?.detected || false,
+					data.blocking_dimensions,
+					data.quantitative?.histogramCorrelation,
+				);
 				console.log(
 					"[ue-harness] Phase:",
 					_phaseState.phase,
 					"Tier:",
 					_phaseState.tier,
+					"Blockers:",
+					_phaseState.blockingDimensions.join(",") || "none",
 					"Assess:",
 					_phaseState.assessCount,
 					"Unchanged:",
@@ -235,20 +243,27 @@ export default function ueHarnessExtension(pi: ExtensionAPI): void {
 				);
 			} catch {}
 		} else if (event.toolName === "check_dimension") {
-			onCheckDimension(_phaseState);
+			try {
+				const text = event.content?.[0]?.text || "";
+				const data = JSON.parse(text);
+				onCheckDimension(_phaseState, data.dimension || "unknown", data.verdict || "unknown");
+			} catch {
+				onCheckDimension(_phaseState, "unknown", "unknown");
+			}
 		}
 	});
 
-	// ── Issue 005: before_agent_start 注入 ──
+	// ── Issue 007: before_agent_start 注入 ──
 	pi.on("before_agent_start", (event: any) => {
 		const phaseCtx = buildPhaseContext(_phaseState);
 		const gapSummary = buildGapSummary(_phaseState);
-		const appendix = phaseCtx + gapSummary;
+		const blockerSummary = buildBlockerSummary(_phaseState);
+		const appendix = phaseCtx + gapSummary + blockerSummary;
 		if (appendix) {
 			return { systemPrompt: `${event.systemPrompt || ""}\n${appendix}` };
 		}
 		return undefined;
 	});
 
-	console.log("[ue-harness] Extension loaded (Issue 005 — Workflow Orchestration)");
+	console.log("[ue-harness] Extension loaded (Issue 007 — Gap Quality + Flow Control)");
 }

@@ -1,11 +1,12 @@
 /**
- * Issue 005 — tool_call block 规则引擎
+ * Issue 007 — tool_call block 规则引擎
  *
  * 在每次 LLM 工具调用前检查:
- *   · Tier 门控 (禁止跨 Tier 调参)
+ *   · 硬上限 (assess/check 次数、further 连续上限、unchanged 轮数)
  *   · Phase 约束 (SETUP 阶段禁止调参, POSTPROCESS_SETUP 禁止截图)
- *   · 后处理默认值防呆
- *   · 硬上限检查
+ *   · Tier 门控 (阻塞维度 + 跨 Tier 拦截)
+ *   · further 阶段 2 拦截
+ *   · artificiality 响应
  */
 import type { PhaseState } from "./phase-machine.ts";
 import { checkLimits } from "./phase-machine.ts";
@@ -101,19 +102,41 @@ export function checkToolCall(toolName: string, args: Record<string, unknown>, s
 
 	if (isWrite && state.phase === "TUNING") {
 		const targetTier = resolveTier(toolName, args);
+
+		// 检查阻塞维度: 跨 Tier 之前必须先解决 blockers
+		if (targetTier !== null && targetTier > 1 && state.blockingDimensions.length > 0) {
+			return {
+				block: true,
+				reason:
+					`Tier 1 存在阻塞维度: ${state.blockingDimensions.join("; ")}。` +
+					"阻塞维度必须先解决才能进入更高 Tier——否则后续调整无效。",
+			};
+		}
+
 		if (targetTier !== null && targetTier !== state.tier) {
 			// 检查前置 Tier 是否还有 unresolved gaps
-			const unmet = Object.entries(state.lastGaps || {}).filter(([, gap]) => gap !== "minor");
+			const unmet = state.lastGapEntries.filter((e) => e.gap !== "minor" && e.tier < targetTier);
 
 			if (targetTier > state.tier && unmet.length > 0) {
 				return {
 					block: true,
 					reason:
 						`当前 Tier ${state.tier}，禁止调 Tier ${targetTier} 的参数。` +
-						`前置维度仍有 gap: ${unmet.map(([d, g]) => `${d}(${g})`).join(", ")}。` +
+						`前置维度仍有 gap: ${unmet.map((e) => `${e.dimension}(${e.gap})`).join(", ")}。` +
 						`请先解决当前 Tier 的 gap 再进入 Tier ${targetTier}。`,
 				};
 			}
+		}
+
+		// check_dimension further 阶段 2: 拦截工具调用
+		if (targetTier !== null && state.consecutiveSameDimensionFurther >= 2) {
+			return {
+				block: true,
+				reason:
+					`维度 "${state.lastCheckDimension}" 连续 ${state.consecutiveSameDimensionFurther} 次 further。` +
+					"可能原因: (1) 调整方向持续错误 (2) 受阻塞维度影响 (3) 调整量太小。" +
+					"请回退此维度的改动，然后选择上述任一排查方向。",
+			};
 		}
 	}
 
