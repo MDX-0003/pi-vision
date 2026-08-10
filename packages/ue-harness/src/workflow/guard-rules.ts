@@ -44,6 +44,21 @@ const TIER_KEYWORDS: Record<string, number> = {
 /** 截图工具名模式 */
 const SCREENSHOT_TOOLS = ["CaptureViewportImage", "CaptureEditorImage", "Screenshot"];
 
+/** 只读工具名模式 —— 不改变场景状态，永远不受硬上限拦截 */
+const READONLY_TOOLS = [
+	"get_properties",
+	"list_properties",
+	"get_actor_transform",
+	"find_actors",
+	"list_toolsets",
+	"describe_toolset",
+	"get_current_level",
+	"get_execution_environment",
+	"CaptureViewportImage",
+	"Screenshot",
+	"check_dimension",
+];
+
 /** 属性写入工具名模式 */
 const WRITE_TOOLS = ["set_properties", "set_actor_transform"];
 
@@ -64,10 +79,13 @@ export interface GuardResult {
  * @param state 当前 Phase 状态
  */
 export function checkToolCall(toolName: string, args: Record<string, unknown>, state: PhaseState): GuardResult {
-	// ── 硬上限 ──
-	const limit = checkLimits(state);
-	if (limit.shouldStop) {
-		return { block: true, reason: limit.reason };
+	// ── 硬上限 (只对写工具生效，只读工具永远放行) ──
+	const isReadonly = READONLY_TOOLS.some((t) => toolName.includes(t));
+	if (!isReadonly) {
+		const limit = checkLimits(state);
+		if (limit.shouldStop) {
+			return { block: true, reason: limit.reason };
+		}
 	}
 
 	// ── Phase 门控 ──

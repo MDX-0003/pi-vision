@@ -35,11 +35,13 @@ export interface PhaseState {
 	checkCount: number; // check_dimension 调用次数
 	lastGapEntries: GapEntry[]; // 上一次 assess_lighting 的完整 gap 条目
 	lastHistogramCorrelation: number; // 上一次的直方图相关性
-	unchangedRounds: number; // 连续无变化的 assess_lighting 轮数
+	unchangedRounds: number; // 连续无改善的 assess_lighting 轮数
 	artificialityDetected: boolean;
 	blockingDimensions: string[]; // 阻塞维度列表
 	lastCheckDimension: string | null; // 上一次 check_dimension 的维度
 	consecutiveSameDimensionFurther: number; // 同一维度连续 further 次数
+	/** 上一轮各维度的量化数值 (ref/cur)，用于数值级 delta 收敛判定 */
+	lastQuantitative: Record<string, { refValue: number; curValue: number }>;
 }
 
 // ── 初始状态 ──
@@ -57,6 +59,7 @@ export function createInitialState(): PhaseState {
 		blockingDimensions: [],
 		lastCheckDimension: null,
 		consecutiveSameDimensionFurther: 0,
+		lastQuantitative: {},
 	};
 }
 
@@ -86,10 +89,6 @@ export function onAssessLighting(
 
 	if (!gaps) return state;
 
-	// 检查是否有变化
-	const newGaps: Record<string, "minor" | "moderate" | "major"> = {};
-	for (const g of gaps) newGaps[g.dimension] = g.gap;
-
 	// 存储完整 gap 条目
 	state.lastGapEntries = gaps.map((g) => ({
 		dimension: g.dimension,
@@ -101,10 +100,10 @@ export function onAssessLighting(
 		qualitative: g.qualitative,
 	}));
 
-	const prev: Record<string, string> = {};
-	for (const e of state.lastGapEntries) prev[e.dimension] = e.gap;
-	const hasChanges = Object.keys(newGaps).some((k) => newGaps[k] !== prev[k]);
-	state.unchangedRounds = hasChanges ? 0 : state.unchangedRounds + 1;
+	// unchangedRounds: 数值级 delta 收敛判定
+	// 排除 overall_composition (结构性差异，无法通过调参解决)
+	state.unchangedRounds = computeUnchangedRounds(state, gaps);
+	storeQuantitative(state, gaps);
 
 	// Phase 转换逻辑
 	switch (state.phase) {
@@ -168,6 +167,74 @@ export function onCheckDimension(state: PhaseState, dimension: string, verdict: 
  */
 export function getFurtherStage(state: PhaseState): number {
 	return state.consecutiveSameDimensionFurther;
+}
+
+// ── unchangedRounds: 数值级 delta 收敛判定 ──
+
+/** 有量化数据的维度名列表 */
+const QUANTITATIVE_DIMS = ["brightness", "color_temperature", "saturation"];
+
+/**
+ * 基于量化 delta 数值判变。
+ * 仅对有量化数据的维度 (brightness/color_temperature/saturation) 做比较。
+ * overall_composition 被排除——它是结构性差异，无法通过调参解决。
+ *
+ * 规则:
+ *  - 任何维度的 delta 绝对值缩小 10% 以上 → "改善"
+ *  - 任何维度的 delta 绝对值扩大 10% 以上 → "恶化"
+ *  - 恶化维度数 > 改善维度数 → unchangedRounds + 1
+ *  - 改善维度数 == 0 且 恶化维度数 == 0 → unchangedRounds + 1 (完全停滞)
+ *  - 否则 → unchangedRounds = 0 (有改善)
+ */
+function computeUnchangedRounds(state: PhaseState, gaps: AssessLightingResult["gaps"] | undefined): number {
+	if (!gaps || state.assessCount <= 1) return 0;
+
+	const prev = state.lastQuantitative;
+	if (Object.keys(prev).length === 0) return 0;
+
+	let improving = 0;
+	let worsening = 0;
+
+	for (const dim of QUANTITATIVE_DIMS) {
+		// 排除 overall_composition
+		if (dim === "overall_composition") continue;
+
+		const gapEntry = gaps.find((g) => g.dimension === dim);
+		const currQ = gapEntry?.quantitative;
+		const prevQ = prev[dim];
+
+		if (!currQ || !prevQ) continue;
+
+		const prevDelta = Math.abs(prevQ.refValue - prevQ.curValue);
+		const currDelta = Math.abs(currQ.refValue - currQ.curValue);
+
+		if (prevDelta === 0) continue; // 前一轮数值异常，跳过
+
+		const ratio = currDelta / prevDelta;
+
+		if (ratio < 0.9) improving++;
+		else if (ratio > 1.1) worsening++;
+	}
+
+	if (worsening > improving) return state.unchangedRounds + 1;
+	if (improving === 0) return state.unchangedRounds + 1;
+	return 0; // 有改善 → 重置
+}
+
+/** 从 gaps 中提取量化数值，存储到 state 供下一轮比较 */
+function storeQuantitative(state: PhaseState, gaps: AssessLightingResult["gaps"] | undefined): void {
+	if (!gaps) return;
+	const quantitative: Record<string, { refValue: number; curValue: number }> = {};
+	for (const dim of QUANTITATIVE_DIMS) {
+		const gapEntry = gaps.find((g) => g.dimension === dim);
+		if (gapEntry?.quantitative) {
+			quantitative[dim] = {
+				refValue: gapEntry.quantitative.refValue,
+				curValue: gapEntry.quantitative.curValue,
+			};
+		}
+	}
+	state.lastQuantitative = quantitative;
 }
 
 // ── 硬上限检查 ──
