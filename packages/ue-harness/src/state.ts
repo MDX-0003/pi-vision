@@ -31,3 +31,17 @@ export function getVisionClient(): VisionClient | null {
 export function isReady(): boolean {
 	return !!_ueClient?.isConnected && !!_visionClient?.isConfigured;
 }
+
+// ═══════════════════════════════════════════
+// Issue 008c — 活跃参考路径
+// ═══════════════════════════════════════════
+
+let _activeReferencePath: string | null = null;
+
+export function setActiveReferencePath(path: string | null): void {
+	_activeReferencePath = path;
+}
+
+export function getActiveReferencePath(): string | null {
+	return _activeReferencePath;
+}

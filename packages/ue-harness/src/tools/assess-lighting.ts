@@ -17,6 +17,7 @@ import { getUeClient, getVisionClient } from "../state.ts";
 import { captureViewport } from "../vision/capture.ts";
 import { computeMetrics } from "../vision/metrics.ts";
 import { ARTIFICIALITY_PROMPT, ATMOSPHERE_ANALYSIS_PROMPT } from "../vision/prompts.ts";
+import { analyzeAndTag, type TagResult } from "../vision/analyzer.ts";
 import type { VisionClient } from "../vision/vision-client.ts";
 
 // ── 类型 ──
@@ -88,6 +89,9 @@ export interface AssessLightingResult {
 		quantitativeMs: number;
 		visionMs: number;
 	};
+
+		/** Issue 008c: 参考图的结构化标签（用于预设匹配） */
+		tagResult?: TagResult;
 }
 
 // ── 维度 → Tier 映射 ──
@@ -284,7 +288,7 @@ export async function executeAssessLighting(params: { reference_path: string }):
 	// Stage 1 + Stage 2: 并行执行
 	// ════════════════════════════════════════════════
 	const qStart = Date.now();
-	const [quantMetrics, refAtmosphere, curAtmosphere, artificiality] = await Promise.all([
+	const [quantMetrics, refAtmosphere, curAtmosphere, artificiality, refTagResult] = await Promise.all([
 		// Stage 1: 量化指标
 		computeMetrics(refBuffer, Buffer.from(capture.base64, "base64")),
 		// Stage 2a: 参考图氛围分析
@@ -293,6 +297,8 @@ export async function executeAssessLighting(params: { reference_path: string }):
 		analyzeAtmosphere(vision, capture.base64),
 		// artificiality 检测
 		checkArtificiality(vision, capture.base64),
+				// Issue 008c: 参考图标签分析（预设匹配用）
+				analyzeAndTag(vision, refBase64),
 	]);
 	meta.quantitativeMs = Date.now() - qStart;
 
@@ -407,6 +413,8 @@ export async function executeAssessLighting(params: { reference_path: string }):
 		},
 		artificiality,
 		blocking_dimensions: blockingDimensions,
+			// Issue 008c: 参考图标签（用于预设匹配）
+			tagResult: refTagResult,
 		meta,
 	};
 

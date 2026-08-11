@@ -195,3 +195,33 @@ export function buildGapSummary(state: PhaseState): string {
 
 	return summary;
 }
+
+// ═══════════════════════════════════════════
+// Issue 008c — 预设匹配建议
+// ═══════════════════════════════════════════
+
+import type { PresetMatch } from "../presets/types.ts";
+
+export function buildPresetSuggestion(matches: PresetMatch[]): string {
+	if (!matches || matches.length === 0) return "";
+
+	let text = "\n## 匹配的预设\n\n";
+	text += "以下预设与当前参考图的氛围特征相似，可提供更好的调参起点:\n";
+
+	for (let i = 0; i < matches.length; i++) {
+		const m = matches[i];
+		text += `  [${i + 1}] ${m.name} (标签匹配: ${m.matchedDimensions.length}/5, 得分 ${m.score})\n`;
+		text += `      ${m.description}\n`;
+		text += `      匹配维度: ${m.matchedDimensions.join(", ")}\n`;
+	}
+
+	text += `
+如果你认为某个预设比当前默认场景更适合作为起点:
+  调 load_preset('name') 批量应用该预设 → 调 assess_lighting() 检验效果
+
+不使用预设则忽略此建议，继续手动调参。
+
+(unspecified = 该维度在此预设或参考图中无法归类，已自动忽略不计分)
+`;
+	return text;
+}

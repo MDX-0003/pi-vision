@@ -14,13 +14,31 @@ import { setUeClient, setVisionClient } from "./state.ts";
 import { assessLightingDef, executeAssessLighting } from "./tools/assess-lighting.ts";
 import { checkDimensionDef, executeCheckDimension } from "./tools/check-dimension.ts";
 import { executeMapAtmosphere, mapAtmosphereDef } from "./tools/map-atmosphere.ts";
+import {
+	savePresetDef,
+	executeSavePreset,
+	listPresetsDef,
+	executeListPresets,
+	deletePresetDef,
+	executeDeletePreset,
+	loadPresetDef,
+	executeLoadPreset,
+} from "./presets/tools.ts";
 import { UeClient } from "./ue-client/mcp-client.ts";
 import { convertTool } from "./ue-client/schema-converter.ts";
 import type { UeHarnessConfig } from "./ue-client/types.ts";
+import { loadCustomVocabulary } from "./vision/analyzer.ts";
 import { VisionClient } from "./vision/vision-client.ts";
+import { loadAllPresets } from "./presets/store.ts";
+import { matchPresetsByTags } from "./presets/match.ts";
 import { checkToolCall } from "./workflow/guard-rules.ts";
-import { buildBlockerSummary, buildGapSummary, buildPhaseContext } from "./workflow/injections.ts";
-import { createInitialState, onAssessLighting, onCheckDimension, type PhaseState } from "./workflow/phase-machine.ts";
+import { buildBlockerSummary, buildGapSummary, buildPhaseContext, buildPresetSuggestion } from "./workflow/injections.ts";
+import {
+	createInitialState,
+	onAssessLighting,
+	onCheckDimension,
+	type PhaseState,
+} from "./workflow/phase-machine.ts";
 
 // ── Vision auth 文件 ──
 
@@ -76,7 +94,12 @@ function createUeToolExecutor(toolName: string) {
 	): Promise<AgentToolResult<null>> => {
 		if (!_ueClient?.isConnected) {
 			return {
-				content: [{ type: "text", text: "Error: UE MCP not connected. Please wait for session initialization." }],
+				content: [
+					{
+						type: "text",
+						text: "Error: UE MCP not connected. Please wait for session initialization.",
+					},
+				],
 				details: null,
 			};
 		}
@@ -99,7 +122,7 @@ function createUeToolExecutor(toolName: string) {
 }
 
 function registerSelfTools(pi: ExtensionAPI): void {
-	// map_atmosphere (Issue 004 ✅)
+	// map_atmosphere (Issue 004)
 	pi.registerTool({
 		name: mapAtmosphereDef.name,
 		label: mapAtmosphereDef.label,
@@ -110,7 +133,7 @@ function registerSelfTools(pi: ExtensionAPI): void {
 		execute: () => executeMapAtmosphere(),
 	});
 
-	// assess_lighting (Issue 003 ✅)
+	// assess_lighting (Issue 003)
 	pi.registerTool({
 		name: assessLightingDef.name,
 		label: assessLightingDef.label,
@@ -121,7 +144,7 @@ function registerSelfTools(pi: ExtensionAPI): void {
 		execute: (_id: string, params: { reference_path: string }) => executeAssessLighting(params),
 	});
 
-	// check_dimension (Issue 004 ✅)
+	// check_dimension (Issue 004)
 	pi.registerTool({
 		name: checkDimensionDef.name,
 		label: checkDimensionDef.label,
@@ -129,8 +152,54 @@ function registerSelfTools(pi: ExtensionAPI): void {
 		parameters: checkDimensionDef.parameters,
 		promptSnippet: checkDimensionDef.promptSnippet,
 		promptGuidelines: checkDimensionDef.promptGuidelines,
-		execute: (_id: string, params: { reference_path: string; dimension: string }) => executeCheckDimension(params),
+		execute: (_id: string, params: { reference_path: string; dimension: string }) =>
+			executeCheckDimension(params),
 	});
+
+	// ── Issue 008b: 预设工具 ──
+	// save_preset
+	pi.registerTool({
+		name: savePresetDef.name,
+		label: savePresetDef.label,
+		description: savePresetDef.description,
+		parameters: savePresetDef.parameters,
+		promptSnippet: savePresetDef.promptSnippet,
+		promptGuidelines: savePresetDef.promptGuidelines,
+		execute: (_id: string, params: { name: string }) => executeSavePreset(params),
+	});
+
+	// list_presets
+	pi.registerTool({
+		name: listPresetsDef.name,
+		label: listPresetsDef.label,
+		description: listPresetsDef.description,
+		parameters: listPresetsDef.parameters,
+		promptSnippet: listPresetsDef.promptSnippet,
+		promptGuidelines: listPresetsDef.promptGuidelines,
+		execute: () => executeListPresets(),
+	});
+
+	// delete_preset
+	pi.registerTool({
+		name: deletePresetDef.name,
+		label: deletePresetDef.label,
+		description: deletePresetDef.description,
+		parameters: deletePresetDef.parameters,
+		promptSnippet: deletePresetDef.promptSnippet,
+		promptGuidelines: deletePresetDef.promptGuidelines,
+		execute: (_id: string, params: { name: string }) => executeDeletePreset(params),
+	});
+
+		// load_preset (Issue 008d)
+		pi.registerTool({
+			name: loadPresetDef.name,
+			label: loadPresetDef.label,
+			description: loadPresetDef.description,
+			parameters: loadPresetDef.parameters,
+			promptSnippet: loadPresetDef.promptSnippet,
+			promptGuidelines: loadPresetDef.promptGuidelines,
+			execute: (_id: string, params: { name: string }) => executeLoadPreset(params),
+		});
 }
 
 // ── 扩展入口 ──
@@ -147,7 +216,11 @@ export default function ueHarnessExtension(pi: ExtensionAPI): void {
 		try {
 			await _ueClient.connect();
 			console.log("[ue-harness] Connected to UE MCP at", config.ueMcpUrl);
-			const visionSource = process.env.VISION_API_KEY ? "env" : loadVisionAuth() ? "vision-auth.json" : "not set";
+			const visionSource = process.env.VISION_API_KEY
+				? "env"
+				: loadVisionAuth()
+					? "vision-auth.json"
+					: "not set";
 			console.log(
 				"[ue-harness] Vision API:",
 				_visionClient.isConfigured
@@ -180,10 +253,15 @@ export default function ueHarnessExtension(pi: ExtensionAPI): void {
 					registered++;
 				} catch (err) {
 					failed++;
-					console.warn(`[ue-harness] Failed to register "${tool.name}": ${(err as Error).message}`);
+					console.warn(
+						`[ue-harness] Failed to register "${tool.name}": ${(err as Error).message}`,
+					);
 				}
 			}
 
+
+			// Issue 008a: 加载自定义词汇表
+			loadCustomVocabulary();
 			// 注册自研工具
 			registerSelfTools(pi);
 
@@ -241,7 +319,14 @@ export default function ueHarnessExtension(pi: ExtensionAPI): void {
 					"Unchanged:",
 					_phaseState.unchangedRounds,
 				);
-			} catch {}
+			} catch {
+				/* ignore parse errors */
+			}
+
+				// Issue 008c: 存储 TagResult 供 before_agent_start 预设匹配
+				if (data.tagResult) {
+					_phaseState.lastTagResult = data.tagResult;
+				}
 		} else if (event.toolName === "check_dimension") {
 			try {
 				const text = event.content?.[0]?.text || "";
@@ -258,7 +343,27 @@ export default function ueHarnessExtension(pi: ExtensionAPI): void {
 		const phaseCtx = buildPhaseContext(_phaseState);
 		const gapSummary = buildGapSummary(_phaseState);
 		const blockerSummary = buildBlockerSummary(_phaseState);
-		const appendix = phaseCtx + gapSummary + blockerSummary;
+
+			// Issue 008c: 预设匹配建议
+			let presetSuggestion = "";
+			if (_phaseState.phase === "TUNING" && _phaseState.lastTagResult && _phaseState.assessCount <= 2) {
+				const presets = loadAllPresets();
+				if (presets.length > 0) {
+					const matches = matchPresetsByTags(
+						_phaseState.lastTagResult.tags,
+						_phaseState.lastTagResult.freeformTags,
+						presets,
+					);
+					if (matches.length > 0) {
+						presetSuggestion = buildPresetSuggestion(matches);
+						console.log(
+							"[ue-harness] Preset matches:",
+							matches.map((m) => `${m.name}(${m.score})`).join(", "),
+						);
+					}
+				}
+			}
+			const appendix = phaseCtx + gapSummary + blockerSummary + presetSuggestion;
 		if (appendix) {
 			return { systemPrompt: `${event.systemPrompt || ""}\n${appendix}` };
 		}

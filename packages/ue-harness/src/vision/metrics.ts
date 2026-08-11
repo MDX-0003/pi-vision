@@ -61,7 +61,7 @@ export async function computeMetrics(refBuffer: Buffer, curBuffer: Buffer): Prom
 /** 获取单张图片的量化统计 */
 export async function computeImageStats(buffer: Buffer): Promise<ImageStats> {
 	const { data, info } = await sharp(buffer)
-		.resize(512, 512, { fit: "inside" }) // 缩放到 512px 加速计算
+		.resize(1024, 1024, { fit: "inside" }) // 缩放到 512px 加速计算
 		.raw()
 		.toBuffer({ resolveWithObject: true });
 

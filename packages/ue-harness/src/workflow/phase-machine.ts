@@ -42,6 +42,8 @@ export interface PhaseState {
 	consecutiveSameDimensionFurther: number; // 同一维度连续 further 次数
 	/** 上一轮各维度的量化数值 (ref/cur)，用于数值级 delta 收敛判定 */
 	lastQuantitative: Record<string, { refValue: number; curValue: number }>;
+	/** Issue 008c: 上一次 analyzeAndTag 的结果，用于 before_agent_start 预设匹配 */
+	lastTagResult?: import("../vision/analyzer.ts").TagResult;
 	/** 最近 3 轮各维度的 delta 绝对值历史 (dimension → deltas, newest last) */
 	quantitativeHistory: Record<string, number[]>;
 }
