@@ -1,5 +1,5 @@
 /**
- * Issue 005 — UE Harness Pi Extension 入口
+ * Issue 009 — UE Harness Pi Extension 入口
  *
  * session_start → 连接 UE + Vision API + 批量注册工具 + 初始化工作流状态机
  * session_shutdown → 断开连接
@@ -10,9 +10,8 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { existsSync, readFileSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
-import { setUeClient, setVisionClient } from "./state.ts";
-import { assessLightingDef, executeAssessLighting } from "./tools/assess-lighting.ts";
-import { checkDimensionDef, executeCheckDimension } from "./tools/check-dimension.ts";
+import { setPhaseState, setUeClient, setVisionClient } from "./state.ts";
+import { assessLightingDef, executeAssessLighting, type AssessLightingResult } from "./tools/assess-lighting.ts";
 import { executeMapAtmosphere, mapAtmosphereDef } from "./tools/map-atmosphere.ts";
 import {
 	savePresetDef,
@@ -32,12 +31,12 @@ import { VisionClient } from "./vision/vision-client.ts";
 import { loadAllPresets } from "./presets/store.ts";
 import { matchPresetsByTags } from "./presets/match.ts";
 import { checkToolCall } from "./workflow/guard-rules.ts";
-import { buildBlockerSummary, buildGapSummary, buildPhaseContext, buildPresetSuggestion } from "./workflow/injections.ts";
+import { buildInjectionAppendix, buildPresetSuggestion } from "./workflow/injections.ts";
 import {
 	createInitialState,
 	onAssessLighting,
-	onCheckDimension,
 	type PhaseState,
+	type QuantitativeSnapshot,
 } from "./workflow/phase-machine.ts";
 
 // ── Vision auth 文件 ──
@@ -133,7 +132,7 @@ function registerSelfTools(pi: ExtensionAPI): void {
 		execute: () => executeMapAtmosphere(),
 	});
 
-	// assess_lighting (Issue 003)
+	// assess_lighting (Issue 009 — serial architecture)
 	pi.registerTool({
 		name: assessLightingDef.name,
 		label: assessLightingDef.label,
@@ -144,20 +143,7 @@ function registerSelfTools(pi: ExtensionAPI): void {
 		execute: (_id: string, params: { reference_path: string }) => executeAssessLighting(params),
 	});
 
-	// check_dimension (Issue 004)
-	pi.registerTool({
-		name: checkDimensionDef.name,
-		label: checkDimensionDef.label,
-		description: checkDimensionDef.description,
-		parameters: checkDimensionDef.parameters,
-		promptSnippet: checkDimensionDef.promptSnippet,
-		promptGuidelines: checkDimensionDef.promptGuidelines,
-		execute: (_id: string, params: { reference_path: string; dimension: string }) =>
-			executeCheckDimension(params),
-	});
-
 	// ── Issue 008b: 预设工具 ──
-	// save_preset
 	pi.registerTool({
 		name: savePresetDef.name,
 		label: savePresetDef.label,
@@ -168,7 +154,6 @@ function registerSelfTools(pi: ExtensionAPI): void {
 		execute: (_id: string, params: { name: string }) => executeSavePreset(params),
 	});
 
-	// list_presets
 	pi.registerTool({
 		name: listPresetsDef.name,
 		label: listPresetsDef.label,
@@ -179,7 +164,6 @@ function registerSelfTools(pi: ExtensionAPI): void {
 		execute: () => executeListPresets(),
 	});
 
-	// delete_preset
 	pi.registerTool({
 		name: deletePresetDef.name,
 		label: deletePresetDef.label,
@@ -190,16 +174,36 @@ function registerSelfTools(pi: ExtensionAPI): void {
 		execute: (_id: string, params: { name: string }) => executeDeletePreset(params),
 	});
 
-		// load_preset (Issue 008d)
-		pi.registerTool({
-			name: loadPresetDef.name,
-			label: loadPresetDef.label,
-			description: loadPresetDef.description,
-			parameters: loadPresetDef.parameters,
-			promptSnippet: loadPresetDef.promptSnippet,
-			promptGuidelines: loadPresetDef.promptGuidelines,
-			execute: (_id: string, params: { name: string }) => executeLoadPreset(params),
-		});
+	pi.registerTool({
+		name: loadPresetDef.name,
+		label: loadPresetDef.label,
+		description: loadPresetDef.description,
+		parameters: loadPresetDef.parameters,
+		promptSnippet: loadPresetDef.promptSnippet,
+		promptGuidelines: loadPresetDef.promptGuidelines,
+		execute: (_id: string, params: { name: string }) => executeLoadPreset(params),
+	});
+}
+
+// ── AssessLightingResult → QuantitativeSnapshot 转换 ──
+
+function extractQuantSnapshot(assessCount: number, result: AssessLightingResult): QuantitativeSnapshot {
+	const q = result.quantitative;
+	// Sky/ground luminance ratio: approximate from regional section
+	const skyLum = q.regional.sky.luminance;
+	const groundLum = q.regional.ground.luminance;
+	const totalLum = skyLum.cur + q.regional.horizon.luminance.cur + groundLum.cur;
+
+	return {
+		assessIndex: assessCount,
+		luminanceDeltaPct: q.luminance.deltaPct,
+		deltaE_mean: q.deltaE.mean,
+		deltaE_p90: q.deltaE.p90,
+		chroma_diff: q.chroma.diff,
+		skyLuminanceRatio: totalLum > 0 ? skyLum.cur / totalLum : 0,
+		groundLuminanceRatio: totalLum > 0 ? groundLum.cur / totalLum : 0,
+		histogramCorrelation: q.histogramCorrelation,
+	};
 }
 
 // ── 扩展入口 ──
@@ -212,6 +216,7 @@ export default function ueHarnessExtension(pi: ExtensionAPI): void {
 		setUeClient(_ueClient);
 		setVisionClient(_visionClient);
 		_phaseState = createInitialState();
+		setPhaseState(_phaseState);
 
 		try {
 			await _ueClient.connect();
@@ -259,10 +264,9 @@ export default function ueHarnessExtension(pi: ExtensionAPI): void {
 				}
 			}
 
-
 			// Issue 008a: 加载自定义词汇表
 			loadCustomVocabulary();
-			// 注册自研工具
+			// 注册自研工具 (assess_lighting, map_atmosphere, preset tools)
 			registerSelfTools(pi);
 
 			console.log(
@@ -283,6 +287,8 @@ export default function ueHarnessExtension(pi: ExtensionAPI): void {
 		}
 		_visionClient = null;
 		setVisionClient(null);
+		_phaseState = createInitialState();
+		setPhaseState(null);
 	});
 
 	// ── Issue 005: tool_call Guard ──
@@ -294,81 +300,76 @@ export default function ueHarnessExtension(pi: ExtensionAPI): void {
 		return undefined;
 	});
 
-	// ── Issue 007: tool_result → Phase 更新 ──
+	// ── Issue 009: tool_result → Phase 更新 ──
 	pi.on("tool_result", (event: any) => {
 		if (event.toolName === "assess_lighting") {
 			try {
 				const text = event.content?.[0]?.text || "";
-				const data = JSON.parse(text);
-				onAssessLighting(
-					_phaseState,
-					data.gaps,
-					data.artificiality?.detected || false,
-					data.blocking_dimensions,
-					data.quantitative?.histogramCorrelation,
-				);
-				console.log(
-					"[ue-harness] Phase:",
-					_phaseState.phase,
-					"Tier:",
-					_phaseState.tier,
-					"Blockers:",
-					_phaseState.blockingDimensions.join(",") || "none",
-					"Assess:",
-					_phaseState.assessCount,
-					"Unchanged:",
-					_phaseState.unchangedRounds,
-				);
+				const data = JSON.parse(text) as AssessLightingResult;
+
+				if (data.success) {
+					const snapshot = extractQuantSnapshot(_phaseState.assessCount + 1, data);
+					onAssessLighting(
+						_phaseState,
+						data.analysis,
+						data.overall,
+						data.quantitative?.histogramCorrelation,
+						snapshot,
+					);
+
+					console.log(
+						"[ue-harness] Phase:",
+						_phaseState.phase,
+						"Tier:",
+						_phaseState.tier,
+						"Round:",
+						_phaseState.tierRoundCount,
+						"CE/NA:",
+						`${data.analysis.filter((a) => a.status === "close_enough").length}/` +
+							`${data.analysis.filter((a) => a.status === "needs_adjustment").length}`,
+						"Assess:",
+						_phaseState.assessCount,
+					);
+
+					// Issue 008c: 存储 TagResult 供 before_agent_start 预设匹配
+					if (data.tagResult) {
+						_phaseState.lastTagResult = data.tagResult;
+					}
+				}
 			} catch {
 				/* ignore parse errors */
-			}
-
-				// Issue 008c: 存储 TagResult 供 before_agent_start 预设匹配
-				if (data.tagResult) {
-					_phaseState.lastTagResult = data.tagResult;
-				}
-		} else if (event.toolName === "check_dimension") {
-			try {
-				const text = event.content?.[0]?.text || "";
-				const data = JSON.parse(text);
-				onCheckDimension(_phaseState, data.dimension || "unknown", data.verdict || "unknown");
-			} catch {
-				onCheckDimension(_phaseState, "unknown", "unknown");
 			}
 		}
 	});
 
-	// ── Issue 007: before_agent_start 注入 ──
+	// ── Issue 009: before_agent_start 注入 ──
 	pi.on("before_agent_start", (event: any) => {
-		const phaseCtx = buildPhaseContext(_phaseState);
-		const gapSummary = buildGapSummary(_phaseState);
-		const blockerSummary = buildBlockerSummary(_phaseState);
-
-			// Issue 008c: 预设匹配建议
-			let presetSuggestion = "";
-			if (_phaseState.phase === "TUNING" && _phaseState.lastTagResult && _phaseState.assessCount <= 2) {
-				const presets = loadAllPresets();
-				if (presets.length > 0) {
-					const matches = matchPresetsByTags(
-						_phaseState.lastTagResult.tags,
-						_phaseState.lastTagResult.freeformTags,
-						presets,
+		// Issue 008c: 预设匹配建议
+		let presetSuggestion = "";
+		if (_phaseState.phase === "TUNING" && _phaseState.lastTagResult && _phaseState.assessCount <= 2) {
+			const presets = loadAllPresets();
+			if (presets.length > 0) {
+				const matches = matchPresetsByTags(
+					_phaseState.lastTagResult.tags,
+					_phaseState.lastTagResult.freeformTags,
+					presets,
+				);
+				if (matches.length > 0) {
+					presetSuggestion = buildPresetSuggestion(matches);
+					console.log(
+						"[ue-harness] Preset matches:",
+						matches.map((m) => `${m.name}(${m.score})`).join(", "),
 					);
-					if (matches.length > 0) {
-						presetSuggestion = buildPresetSuggestion(matches);
-						console.log(
-							"[ue-harness] Preset matches:",
-							matches.map((m) => `${m.name}(${m.score})`).join(", "),
-						);
-					}
 				}
 			}
-			const appendix = phaseCtx + gapSummary + blockerSummary + presetSuggestion;
+		}
+
+		const appendix = buildInjectionAppendix(_phaseState, presetSuggestion);
 		if (appendix) {
 			return { systemPrompt: `${event.systemPrompt || ""}\n${appendix}` };
 		}
 		return undefined;
 	});
 
-	console.log("[ue-harness] Extension loaded (Issue 007 — Gap Quality + Flow Control)");
+	console.log("[ue-harness] Extension loaded (Issue 009 — Serial Architecture + Quantitative Metrics)");
 }

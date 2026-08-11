@@ -1,238 +1,201 @@
 /**
- * Issue 003 — assess_lighting 工具实现
+ * Issue 009b — assess_lighting 串行化重写
  *
- * 核心 Vision 工具。对比参考图与当前截图，输出每维度 gap 报告。
+ * 新架构: Vision 从"并行竞争者"变为"串行决策者"。
+ * Stage 1 (并行): computeMetrics + analyzeAndTag
+ * Stage 2 (串行): Vision 综合定量数据+双图 → 结构化分析
  *
- * 流程:
- *   Stage 1 (量化指标)  +  Stage 2 (Vision 主观)  →  并行执行
- *   → 特征对比 (rating diff → gap level)
- *   → artificiality 检测
- *   → 结构化 JSON 输出
+ * SETUP 阶段自动重置 PostProcess 到默认值，消除 artificiality catch-22。
  */
 
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { readFileSync } from "fs";
 import { Type } from "typebox";
-import { getUeClient, getVisionClient } from "../state.ts";
+import { getUeClient, getVisionClient, getPhaseState } from "../state.ts";
 import { captureViewport } from "../vision/capture.ts";
-import { computeMetrics } from "../vision/metrics.ts";
-import { ARTIFICIALITY_PROMPT, ATMOSPHERE_ANALYSIS_PROMPT } from "../vision/prompts.ts";
+import { computeMetrics, type QuantitativeReport } from "../vision/metrics.ts";
+import { ASSESS_LIGHTING_PROMPT } from "../vision/prompts.ts";
 import { analyzeAndTag, type TagResult } from "../vision/analyzer.ts";
-import type { VisionClient } from "../vision/vision-client.ts";
+import type { UeClient } from "../ue-client/mcp-client.ts";
 
-// ── 类型 ──
+// ── Types ──
 
-/** 8 维度氛围分析结果 */
-interface AtmosphereAnalysis {
-	[dimension: string]: {
-		rating: number;
-		description: string;
-	};
-}
-
-/** artificiality 检测结果 */
-interface ArtificialityResult {
-	detected: boolean;
-	detail: string;
-}
-
-/** 单个维度的 gap */
-interface DimensionGap {
-	dimension: string;
+export interface AnalysisEntry {
+	/** Vision 命名的差异名称 (kebab-case, 如 "brightness", "shadow_warmth") */
+	aspect: string;
+	/** 此差异是否需要继续调参 */
+	status: "close_enough" | "needs_adjustment";
+	/** 关联的 Tier (1/2/3), 由 Vision 在 prompt 指令下标记 */
 	tier: number;
-	gap: "minor" | "moderate" | "major";
-	direction: string;
-	rating_diff: number;
-	quantitative: {
-		refValue: number;
-		curValue: number;
-		delta: string;
-	} | null;
-	qualitative: string | null;
+	/** 诊断 + 具体调参建议 (1-2 句中文) */
+	suggestion: string;
 }
 
-/** assess_lighting 完整返回 */
 export interface AssessLightingResult {
 	success: boolean;
 	error?: string;
 
-	reference?: {
-		path: string;
-		atmosphere: AtmosphereAnalysis;
-		fileSize: number;
-	};
+	reference: { path: string; fileSize: number };
+	current: { filePath: string; fileSize: number };
 
-	current?: {
-		atmosphere: AtmosphereAnalysis;
-		filePath: string;
-		fileSize: number;
-	};
+	/** 代码计算的完整定量报告 */
+	quantitative: QuantitativeReport;
 
-	gaps?: DimensionGap[];
+	/** Vision 的结构化分析 */
+	analysis: AnalysisEntry[];
 
-	quantitative?: {
-		reference: { luminance: number; colorTempRatio: number; saturation: number };
-		current: { luminance: number; colorTempRatio: number; saturation: number };
-		luminanceDelta: string;
-		colorTempRatioDelta: string;
-		saturationDelta: string;
-		histogramCorrelation: number;
-	};
+	/** Vision 的总体评价 (1-2 句) */
+	overall: string;
 
-	artificiality?: ArtificialityResult;
+	/** Issue 008c: 参考图的标签 (与 metrics 并行计算) */
+	tagResult?: TagResult;
 
-	blocking_dimensions?: string[];
-
-	meta?: {
+	meta: {
 		visionTokens: number;
 		captureMs: number;
 		quantitativeMs: number;
 		visionMs: number;
 	};
-
-		/** Issue 008c: 参考图的结构化标签（用于预设匹配） */
-		tagResult?: TagResult;
 }
 
-// ── 维度 → Tier 映射 ──
+// ── __CURRENT_TIER_INFO__ 生成 ──
 
-const DIMENSION_TIER: Record<string, number> = {
-	light_direction: 1,
-	color_temperature: 1,
-	brightness: 1,
-	shadow_depth: 1,
-	atmosphere: 2,
-	contrast: 3,
-	color_cast: 3,
-	saturation: 3,
-};
-
-// ── 量化阈值 ──
-
-/** 量化指标 delta 绝对值 → gap 级别 */
-function quantitativeGap(dimension: string, deltaAbs: number): "minor" | "moderate" | "major" | null {
-	switch (dimension) {
-		case "brightness":
-			if (deltaAbs <= 15) return "minor";
-			if (deltaAbs <= 30) return "moderate";
-			return "major";
-		case "color_temperature":
-			if (deltaAbs <= 0.15) return "minor";
-			if (deltaAbs <= 0.4) return "moderate";
-			return "major";
-		case "saturation":
-			if (deltaAbs <= 0.05) return "minor";
-			if (deltaAbs <= 0.15) return "moderate";
-			return "major";
-		default:
-			return null;
-	}
-}
-
-// ── gap 判定 (Vision + 量化双路校验) ──
-
-function computeGap(
-	dimension: string,
-	refRating: number,
-	curRating: number,
-	quantitativeDeltaAbs?: number,
-): "minor" | "moderate" | "major" {
-	const visionDiff = Math.abs(refRating - curRating);
-	let visionGap: "minor" | "moderate" | "major";
-	if (visionDiff >= 3) visionGap = "major";
-	else if (visionDiff === 2) visionGap = "moderate";
-	else visionGap = "minor";
-
-	if (quantitativeDeltaAbs !== undefined) {
-		const quantGap = quantitativeGap(dimension, quantitativeDeltaAbs);
-		if (quantGap) {
-			// 取两者中最严重的
-			const severity: Record<string, number> = { minor: 0, moderate: 1, major: 2 };
-			return severity[quantGap] > severity[visionGap] ? quantGap : visionGap;
-		}
-	}
-
-	return visionGap;
-}
-
-function computeDirection(dimension: string, refRating: number, curRating: number): string {
-	const diff = refRating - curRating; // positive = ref higher, negative = cur higher
-	const map: Record<string, [string, string]> = {
-		light_direction: ["closer_to_ref", "further_from_ref"],
-		color_temperature: ["too_cool", "too_warm"],
-		brightness: ["too_dark", "too_bright"],
-		contrast: ["too_flat", "too_contrasty"],
-		color_cast: ["less_cast", "more_cast"],
-		saturation: ["less_saturated", "more_saturated"],
-		atmosphere: ["too_clear", "too_hazy"],
-		shadow_depth: ["too_shallow", "too_deep"],
+function buildCurrentTierInfo(tier: number, tierRoundCount: number): string {
+	const paramMap: Record<number, string> = {
+		1: "当前调参阶段: Tier 1 (第 " + tierRoundCount + " 轮)\n" +
+			"可调参数: DirectionalLight.lightColor/intensity/temperature/lightSourceAngle, SkyLight.lightColor/intensity\n" +
+			"不可调: SkyAtmosphere, ExponentialHeightFog, VolumetricCloud, PostProcessVolume (这些属于更高 Tier)",
+		2: "当前调参阶段: Tier 2 (第 " + tierRoundCount + " 轮)\n" +
+			"可调参数: SkyAtmosphere, ExponentialHeightFog, VolumetricCloud (散射、密度、高度等)\n" +
+			"不可调: PostProcessVolume (属于 Tier 3)",
+		3: "当前调参阶段: Tier 3 (第 " + tierRoundCount + " 轮)\n" +
+			"可调参数: PostProcessVolume (whiteTemp, colorSaturation, colorContrast, colorGamma, autoExposureBias 等)",
 	};
-
-	const [whenRefHigher, whenCurHigher] = map[dimension] ?? ["below_ref", "above_ref"];
-	if (diff === 0) return "close_enough";
-	return diff > 0 ? whenRefHigher : whenCurHigher;
+	return paramMap[tier] ?? paramMap[1];
 }
 
-// ── 阻塞维度检测 ──
+// ── SETUP PostProcess 重置 ──
 
-function findBlockers(
-	gaps: DimensionGap[],
-	artificiality: ArtificialityResult | undefined,
-	histogramCorrelation: number,
-): string[] {
-	const blockers: string[] = [];
+function parseUeReturnValue(text: string): unknown {
+	try {
+		const outer = JSON.parse(text);
+		if (outer.returnValue !== undefined) {
+			const rv = outer.returnValue;
+			if (typeof rv === "string") {
+				try { return JSON.parse(rv); } catch { return rv; }
+			}
+			return rv;
+		}
+		return outer;
+	} catch {
+		return text;
+	}
+}
 
-	// 规则 1: light_direction 如果 gap 非 minor 且直方图相关性低 → blocker
-	const lightGap = gaps.find((g) => g.dimension === "light_direction");
-	if (lightGap && lightGap.gap !== "minor" && histogramCorrelation < 0.5) {
-		blockers.push("light_direction (太阳角度差异 — 必须先解决，否则其他维度调整无效)");
+function extractActorRefPaths(parsed: unknown): string[] {
+	if (Array.isArray(parsed)) {
+		return (parsed as Array<Record<string, unknown>>)
+			.map((a) => (typeof a?.refPath === "string" ? a.refPath : typeof a?.path === "string" ? a.path : null))
+			.filter((p): p is string => p !== null);
+	}
+	return [];
+}
+
+/**
+ * SETUP 阶段: 将场景中所有 PostProcessVolume 的 color grading 参数重置为引擎默认值。
+ *
+ * PPV 的 color grading 参数嵌套在 Settings 子结构 (FPostProcessSettings) 中，
+ * 不能直接在 actor 上 set 单个属性。必须:
+ *   1. get_properties 读取完整 settings struct
+ *   2. 修改目标字段 + 设置对应的 bOverride_* 标志
+ *   3. set_properties 以 values (JSON字符串) 写回 {"settings": modifiedSettings}
+ *
+ * 参考: E:/Programs/UE_Project_58/MCP/Test/ppv_test2.py
+ *       E:/Programs/UE_Project_58/MCP/Test/test_ppv_direct.py
+ */
+async function resetPostProcessToDefaults(ueClient: UeClient): Promise<void> {
+	const GET_PROPS = "toolset_registry.toolsets.core.object.ObjectTools.get_properties";
+	const SET_PROPS = "toolset_registry.toolsets.core.object.ObjectTools.set_properties";
+	const FIND_ACTORS = "toolset_registry.toolsets.core.scene.SceneTools.find_actors";
+
+	// Step 1: 查找所有 PostProcessVolume actor
+	const findResult = await ueClient.callTool(FIND_ACTORS, { glob: "*PostProcessVolume*", tag: "" });
+	if (findResult.isError) {
+		console.log("[ue-harness] resetPostProcess: find_actors failed, skipping");
+		return;
 	}
 
-	// 规则 2: color_temperature 为 major → blocker
-	if (lightGap && lightGap.gap === "minor" && histogramCorrelation < 0.5) {
-		// light_direction 评级低但直方图相关性也低 → 结构性不匹配，仍可能是角度问题
-		if (!blockers.some((b) => b.startsWith("light_direction"))) {
-			blockers.push("light_direction (太阳角度差异 — Vision 评分接近但直方图相关性低，可能存在结构性不匹配)");
+	const parsed = parseUeReturnValue(findResult.text);
+	const actorRefPaths = extractActorRefPaths(parsed);
+	if (actorRefPaths.length === 0) {
+		console.log("[ue-harness] resetPostProcess: no PostProcessVolume found, skipping");
+		return;
+	}
+
+	console.log(`[ue-harness] resetPostProcess: resetting ${actorRefPaths.length} PostProcessVolume(s)`);
+
+	for (const refPath of actorRefPaths) {
+		// Step 2: 读取完整的 settings struct
+		const getResult = await ueClient.callTool(GET_PROPS, {
+			instance: { refPath },
+			properties: ["settings"],
+		});
+		if (getResult.isError) {
+			console.log(`[ue-harness] resetPostProcess: get_properties failed for ${refPath}`);
+			continue;
+		}
+
+		let raw = parseUeReturnValue(getResult.text);
+		// 解包多层 JSON
+		if (typeof raw === "string") {
+			try { raw = JSON.parse(raw); } catch { /* keep as-is */ }
+		}
+		const settingsObj = (raw as Record<string, unknown>)?.settings as Record<string, unknown> | undefined;
+		if (!settingsObj || typeof settingsObj !== "object") {
+			console.log(`[ue-harness] resetPostProcess: could not extract settings from ${refPath}`);
+			continue;
+		}
+
+		// Step 3: 修改 color grading 参数 + bOverride 标志
+		const modified = { ...settingsObj };
+		// 色温
+		modified["bOverride_WhiteTemp"] = true;
+		modified["WhiteTemp"] = 6500;
+		// 饱和度 (FVector4)
+		modified["bOverride_ColorSaturation"] = true;
+		modified["ColorSaturation"] = { X: 1, Y: 1, Z: 1, W: 1 };
+		// 对比度
+		modified["bOverride_ColorContrast"] = true;
+		modified["ColorContrast"] = { X: 1, Y: 1, Z: 1, W: 1 };
+		// 伽马
+		modified["bOverride_ColorGamma"] = true;
+		modified["ColorGamma"] = { X: 1, Y: 1, Z: 1, W: 1 };
+		// 胶片色调映射
+		modified["bOverride_FilmSlope"] = true;
+		modified["FilmSlope"] = 0.88;
+		modified["bOverride_FilmToe"] = true;
+		modified["FilmToe"] = 0.55;
+		// 色散
+		modified["bOverride_SceneFringeIntensity"] = true;
+		modified["SceneFringeIntensity"] = 0;
+		// 调色混合
+		modified["bOverride_ColorGradingIntensity"] = true;
+		modified["ColorGradingIntensity"] = 1;
+
+		// Step 4: 以 values JSON 字符串写回 (非 properties object!)
+		const setResult = await ueClient.callTool(SET_PROPS, {
+			instance: { refPath },
+			values: JSON.stringify({ settings: modified }),
+		});
+
+		if (setResult.isError) {
+			console.log(
+				`[ue-harness] resetPostProcess: set_properties failed for ${refPath}: ${setResult.text.substring(0, 80)}`,
+			);
+		} else {
+			console.log(`[ue-harness] resetPostProcess: ${refPath} -> defaults OK`);
 		}
 	}
-
-	const colorGap = gaps.find((g) => g.dimension === "color_temperature");
-	if (colorGap && colorGap.gap === "major") {
-		blockers.push("color_temperature (全局色温偏差大 — 影响所有大气和雾的颜色表现)");
-	}
-
-	// 规则 3: artificiality → blocker
-	if (artificiality?.detected) {
-		blockers.push("post_processing (检测到人工滤镜感 — 回退 PostProcess 到默认值后重新评估)");
-	}
-
-	return blockers;
-}
-
-// ── helper ──
-
-function computeOverallGap(histogramCorrelation: number): "major" | "moderate" | null {
-	if (histogramCorrelation < 0.3) return "major";
-	if (histogramCorrelation < 0.5) return "moderate";
-	return null;
-}
-
-async function analyzeAtmosphere(vision: VisionClient, base64: string): Promise<AtmosphereAnalysis> {
-	const result = await vision.sendAndParse<AtmosphereAnalysis>({
-		prompt: ATMOSPHERE_ANALYSIS_PROMPT,
-		images: [{ base64 }],
-		maxTokens: 2000,
-	});
-	return result;
-}
-
-async function checkArtificiality(vision: VisionClient, base64: string): Promise<ArtificialityResult> {
-	const result = await vision.sendAndParse<ArtificialityResult>({
-		prompt: ARTIFICIALITY_PROMPT,
-		images: [{ base64 }],
-		maxTokens: 300,
-	});
-	return result;
 }
 
 // ── 主入口: ToolDefinition + execute ──
@@ -241,32 +204,40 @@ export const assessLightingDef = {
 	name: "assess_lighting",
 	label: "Assess Lighting",
 	description:
-		"对比参考图与当前场景截图，输出每个光照维度的差距报告。" +
-		"包含量化指标（亮度/色温比/饱和度/直方图相关性）和 Vision 主观评估（8个维度1-5评分）",
+		"对比参考图与当前场景截图，Vision 综合 12 项定量指标给出结构化诊断。" +
+		"每个 aspect 标记 close_enough / needs_adjustment 及根因 tier，含具体调参建议。" +
+		"SETUP 阶段自动重置 PostProcess 到默认值。",
 	parameters: Type.Object({
 		reference_path: Type.String(),
 	}),
-	promptSnippet: "assess_lighting: 对比参考图与当前场景，输出每维度光照差距报告",
+	promptSnippet: "assess_lighting: Vision 综合定量数据+双图对比，输出结构化诊断报告",
 	promptGuidelines: [
-		"首次调用 assess_lighting 前必须先调 map_atmosphere 了解可调参数",
-		"assess_lighting 会消耗 Vision token，仅在需要全局判断时调用",
-		"调整单个参数后优先用 check_dimension 做单维度快速验证",
+		"每次调参后用 assess_lighting 获取全维度状态",
+		"Vision 的 analysis 中 needs_adjustment 项 = 仍需调参的 aspect",
+		"所有 aspect close_enough → 自动进入下一 Tier",
+		"首次调用时 PostProcess 会自动重置到默认值",
 	],
 };
 
-export async function executeAssessLighting(params: { reference_path: string }): Promise<AgentToolResult> {
+export async function executeAssessLighting(
+	params: { reference_path: string },
+): Promise<AgentToolResult> {
 	const ueClient = getUeClient();
 	const vision = getVisionClient();
+	const state = getPhaseState();
 
-	if (!ueClient?.isConnected) {
-		return errResult("UE MCP not connected");
-	}
-	if (!vision?.isConfigured) {
-		return errResult("VISION_API_KEY not configured");
-	}
+	if (!ueClient?.isConnected) return errResult("UE MCP not connected");
+	if (!vision?.isConfigured) return errResult("VISION_API_KEY not configured");
 
 	const refPath = params.reference_path;
 	const meta = { visionTokens: 0, captureMs: 0, quantitativeMs: 0, visionMs: 0 };
+
+	// ═══════════════════════════════════
+	// SETUP: 首次 assess 前重置 PostProcess 到默认值
+	// ═══════════════════════════════════
+	if (state && state.phase === "SETUP") {
+		await resetPostProcessToDefaults(ueClient);
+	}
 
 	// ── 加载参考图 ──
 	let refBuffer: Buffer;
@@ -279,142 +250,54 @@ export async function executeAssessLighting(params: { reference_path: string }):
 
 	// ── 捕获当前截图 ──
 	const capture = await captureViewport(ueClient, 1.0);
-	if (!capture) {
-		return errResult("Viewport capture failed");
-	}
+	if (!capture) return errResult("Viewport capture failed");
 	meta.captureMs = capture.elapsedMs;
 
-	// ════════════════════════════════════════════════
-	// Stage 1 + Stage 2: 并行执行
-	// ════════════════════════════════════════════════
+	// ═══════════════════════════════════
+	// Stage 1 (并行): 定量指标 + 标签分析
+	// ═══════════════════════════════════
 	const qStart = Date.now();
-	const [quantMetrics, refAtmosphere, curAtmosphere, artificiality, refTagResult] = await Promise.all([
-		// Stage 1: 量化指标
+	const [quantitative, refTagResult] = await Promise.all([
 		computeMetrics(refBuffer, Buffer.from(capture.base64, "base64")),
-		// Stage 2a: 参考图氛围分析
-		analyzeAtmosphere(vision, refBase64),
-		// Stage 2b: 当前截图氛围分析
-		analyzeAtmosphere(vision, capture.base64),
-		// artificiality 检测
-		checkArtificiality(vision, capture.base64),
-				// Issue 008c: 参考图标签分析（预设匹配用）
-				analyzeAndTag(vision, refBase64),
+		analyzeAndTag(vision, refBase64),
 	]);
 	meta.quantitativeMs = Date.now() - qStart;
 
-	// ════════════════════════════════════════════════
-	// 特征对比: rating diff → gap
-	// ════════════════════════════════════════════════
-	const gaps: DimensionGap[] = [];
+	// ═══════════════════════════════════
+	// Stage 2 (串行): Vision 氛围分析
+	// ═══════════════════════════════════
+	const vStart = Date.now();
+	const quantReportStr = JSON.stringify(quantitative);
+	const tierInfo = state
+		? buildCurrentTierInfo(state.tier, state.tierRoundCount)
+		: buildCurrentTierInfo(1, 0);
+	const prompt = ASSESS_LIGHTING_PROMPT
+		.replace("__QUANTITATIVE_REPORT__", quantReportStr)
+		.replace("__CURRENT_TIER_INFO__", tierInfo);
 
-	for (const [dim, refData] of Object.entries(refAtmosphere)) {
-		const curData = curAtmosphere[dim];
-		if (!curData || typeof refData.rating !== "number" || typeof curData.rating !== "number") continue;
-
-		const refRating = refData.rating;
-		const curRating = curData.rating;
-		const ratingDiff = refRating - curRating;
-		const tier = DIMENSION_TIER[dim] ?? 99;
-
-		// 量化数据 (只有部分维度有) + 量化 delta 绝对值 (用于交叉校验)
-		let quantitative: DimensionGap["quantitative"] = null;
-		let quantDeltaAbs: number | undefined;
-		if (dim === "brightness") {
-			quantDeltaAbs = Math.abs(quantMetrics.luminanceDelta);
-			quantitative = {
-				refValue: quantMetrics.reference.luminance,
-				curValue: quantMetrics.current.luminance,
-				delta: `${quantMetrics.luminanceDelta > 0 ? "+" : ""}${quantMetrics.luminanceDelta.toFixed(1)}%`,
-			};
-		} else if (dim === "color_temperature") {
-			quantDeltaAbs = Math.abs(quantMetrics.colorTempRatioDelta);
-			quantitative = {
-				refValue: quantMetrics.reference.colorTempRatio,
-				curValue: quantMetrics.current.colorTempRatio,
-				delta: `${quantMetrics.colorTempRatioDelta > 0 ? "+" : ""}${quantMetrics.colorTempRatioDelta.toFixed(2)}`,
-			};
-		} else if (dim === "saturation") {
-			quantDeltaAbs = Math.abs(quantMetrics.saturationDelta);
-			quantitative = {
-				refValue: quantMetrics.reference.saturation,
-				curValue: quantMetrics.current.saturation,
-				delta: `${quantMetrics.saturationDelta > 0 ? "+" : ""}${quantMetrics.saturationDelta.toFixed(3)}`,
-			};
-		}
-
-		gaps.push({
-			dimension: dim,
-			tier,
-			gap: computeGap(dim, refRating, curRating, quantDeltaAbs),
-			direction: computeDirection(dim, refRating, curRating),
-			rating_diff: Math.abs(ratingDiff),
-			quantitative,
-			qualitative: Math.abs(ratingDiff) >= 2 ? `${refData.description} vs ${curData.description}` : null,
-		});
-	}
-
-	// 直方图相关性低 → 追加整体结构不匹配 pseudo-gap
-	const overallGap = computeOverallGap(quantMetrics.histogramCorrelation);
-	if (overallGap) {
-		gaps.push({
-			dimension: "overall_composition",
-			tier: 0,
-			gap: overallGap,
-			direction: "structural_mismatch",
-			rating_diff: 0,
-			quantitative: null,
-			qualitative:
-				"画面整体色调分布与参考图差异大。即使各维度 gap 都小，也可能存在结构性不匹配（如太阳角度、场景几何、参考图场景中的特殊元素）。",
-		});
-	}
-
-	// 阻塞维度检测
-	const blockingDimensions = findBlockers(gaps, artificiality, quantMetrics.histogramCorrelation);
-
-	// 按 gap severity + tier 排序
-	gaps.sort((a, b) => {
-		const severityOrder = { major: 0, moderate: 1, minor: 2 };
-		const sa = severityOrder[a.gap];
-		const sb = severityOrder[b.gap];
-		if (sa !== sb) return sa - sb;
-		return a.tier - b.tier;
+	const visionRaw = await vision.sendAndParse<{
+		analysis: AnalysisEntry[];
+		overall: string;
+	}>({
+		prompt,
+		images: [
+			{ base64: refBase64 },
+			{ base64: capture.base64 },
+		],
+		maxTokens: 3000,
 	});
+	meta.visionMs = Date.now() - vStart;
+	meta.visionTokens = 1 * 3000; // 1 Vision call @ 3000 tokens
 
-	meta.visionTokens = 3 * 2000; // 3 Vision calls (ref, cur, artificiality) @ ~2000 each
-
+	// ── 组装结果 ──
 	const result: AssessLightingResult = {
 		success: true,
-		reference: {
-			path: refPath,
-			atmosphere: refAtmosphere,
-			fileSize: refBuffer.length,
-		},
-		current: {
-			atmosphere: curAtmosphere,
-			filePath: capture.filePath,
-			fileSize: capture.fileSize,
-		},
-		gaps,
-		quantitative: {
-			reference: {
-				luminance: quantMetrics.reference.luminance,
-				colorTempRatio: quantMetrics.reference.colorTempRatio,
-				saturation: quantMetrics.reference.saturation,
-			},
-			current: {
-				luminance: quantMetrics.current.luminance,
-				colorTempRatio: quantMetrics.current.colorTempRatio,
-				saturation: quantMetrics.current.saturation,
-			},
-			luminanceDelta: `${quantMetrics.luminanceDelta > 0 ? "+" : ""}${quantMetrics.luminanceDelta.toFixed(1)}%`,
-			colorTempRatioDelta: `${quantMetrics.colorTempRatioDelta > 0 ? "+" : ""}${quantMetrics.colorTempRatioDelta.toFixed(2)}`,
-			saturationDelta: `${quantMetrics.saturationDelta > 0 ? "+" : ""}${quantMetrics.saturationDelta.toFixed(3)}`,
-			histogramCorrelation: quantMetrics.histogramCorrelation,
-		},
-		artificiality,
-		blocking_dimensions: blockingDimensions,
-			// Issue 008c: 参考图标签（用于预设匹配）
-			tagResult: refTagResult,
+		reference: { path: refPath, fileSize: refBuffer.length },
+		current: { filePath: capture.filePath, fileSize: capture.fileSize },
+		quantitative,
+		analysis: visionRaw.analysis || [],
+		overall: visionRaw.overall || "",
+		tagResult: refTagResult,
 		meta,
 	};
 

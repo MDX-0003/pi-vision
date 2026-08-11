@@ -7,9 +7,11 @@
  */
 import type { UeClient } from "./ue-client/mcp-client.ts";
 import type { VisionClient } from "./vision/vision-client.ts";
+import type { PhaseState } from "./workflow/phase-machine.ts";
 
 let _ueClient: UeClient | null = null;
 let _visionClient: VisionClient | null = null;
+let _phaseState: PhaseState | null = null;
 
 export function setUeClient(client: UeClient | null): void {
 	_ueClient = client;
@@ -44,4 +46,16 @@ export function setActiveReferencePath(path: string | null): void {
 
 export function getActiveReferencePath(): string | null {
 	return _activeReferencePath;
+}
+
+// ═══════════════════════════════════════════
+// Issue 009 — PhaseState access (for SETUP PostProcess reset)
+// ═══════════════════════════════════════════
+
+export function setPhaseState(state: PhaseState | null): void {
+	_phaseState = state;
+}
+
+export function getPhaseState(): PhaseState | null {
+	return _phaseState;
 }

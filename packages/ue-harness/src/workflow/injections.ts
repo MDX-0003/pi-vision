@@ -1,15 +1,15 @@
 /**
- * Issue 007 — before_agent_start 上下文注入
+ * Issue 009c — before_agent_start 上下文注入
  *
- * 根据当前 Phase/Tier 状态生成 system prompt 追加文本。
- * 告诉 LLM 当前处于什么阶段、可以做什么、禁止做什么。
- *
- * 2026-08-10 重构: gap 摘要改为按 Tier 分组的维度明细表 (量化数字 + 方向描述);
- * 新增阻塞维度摘要 + check_dimension further 三阶段引导。
+ * 重写: buildAnalysisSummary (替换 buildGapSummary) +
+ *       新增: buildQuantitativeTrendSummary +
+ *       收尾提示 (tierRoundCount >= 10)
+ * 移除: buildBlockerSummary, check_dimension related guidance
  */
 
-import type { GapEntry, PhaseState } from "./phase-machine.ts";
-import { getDimensionTrends, getFurtherStage, isTierOneSettled } from "./phase-machine.ts";
+import type { QuantitativeSnapshot, PhaseState } from "./phase-machine.ts";
+import { TIER_MAX_ROUNDS } from "./phase-machine.ts";
+import type { AnalysisEntry } from "../tools/assess-lighting.ts";
 
 // ── Phase 模板 ──
 
@@ -22,64 +22,38 @@ const PHASE_TEMPLATES: Record<string, (s: PhaseState) => string> = {
   2. 调 assess_lighting(reference_path) 对比参考图，了解每个维度的差距
 
 禁止在 SETUP 阶段直接调参或截图——这些操作会被自动阻止。
+PostProcess 参数会在首次 assess_lighting 时自动重置到默认值。
 `,
 
-	TUNING: (s) => {
-		const furtherStage = getFurtherStage(s);
-
-		let furtherGuidance = "";
-		if (furtherStage === 1) {
-			furtherGuidance = `
-注意: check_dimension 返回 further (维度: ${s.lastCheckDimension || "?"})。
-当前方向可能反了，请尝试反向调整，或检查是否受阻塞维度影响。`;
-		} else if (furtherStage === 2) {
-			furtherGuidance = `
-[ACTION REQUIRED] check_dimension 连续 2 次 further (维度: ${s.lastCheckDimension || "?"})。
-可能原因:
-  1. 调整方向持续错误 -- 请尝试反向调整
-  2. 受阻塞维度影响 -- 请先解决阻塞维度，再回到此维度
-  3. 调整量太小 -- 请增大参数变化幅度
-操作: 回退此维度的改动，然后选择上述任一排查方向。`;
-		}
-
-		return `
+	TUNING: (s) => `
 ## 当前阶段: TUNING (Tier ${s.tier})
 
 你正在调整 Tier ${s.tier} 的参数。
 ${s.tier === 1 ? "只能调 DirectionalLight / SkyLight 的属性 (LightColor, intensity, temperature, lightSourceAngle)。" : ""}
 ${s.tier === 2 ? "只能调 SkyAtmosphere / ExponentialHeightFog / VolumetricCloud 的属性。" : ""}
-${s.tier === 3 ? "可以调 PostProcessVolume 的属性 (whiteTemp, colorSaturation, colorContrast 等)。" : ""}
+${s.tier === 3 ? "可以调 PostProcessVolume 的属性 (whiteTemp, colorSaturation, colorContrast, colorGamma, autoExposureBias 等)。" : ""}
 
 规则:
   - 可以批量修改参数，不需要每改一个就截图
-  - 修改完一批参数后，调 check_dimension(reference_path, dimension) 验证方向
-  - 当前 Tier 所有维度 gap=minor 后，调 assess_lighting(reference_path) 进入下一 Tier
-  - 跨 Tier 调参会自动被阻止${s.unchangedRounds > 0 ? `\n  - 警告: 已连续 ${s.unchangedRounds} 轮 gap 无变化 -- 请考虑换一个参数或维度` : ""}${s.artificialityDetected ? "\n  - 警告: 检测到人工后期感 -- 请回退 PostProcess 到默认值，从真实光源开始调整" : ""}${furtherGuidance}`;
-	},
+  - 修改完一批参数后，调 assess_lighting(reference_path) 获取 Vision 综合诊断
+  - Vision 的 analysis 中 needs_adjustment 项 = 仍需调参
+  - 当前 Tier 所有 aspect close_enough → 自动进入下一 Tier
+  - 跨 Tier 调参会自动被阻止${s.tierRoundCount > 0 ? `\n  - 当前 Tier 已进行 ${s.tierRoundCount}/${TIER_MAX_ROUNDS} 轮调参` : ""}`,
 
 	POSTPROCESS_SETUP: (_s) => `
 ## 当前阶段: POSTPROCESS_SETUP
 
-后处理 (PostProcessVolume) 初始化。必须严格按以下步骤:
-
-  1. 将 PostProcessVolume 的所有 color grading 参数回退到默认值
-     (whiteTemp=6500, colorSaturation=1.0, colorContrast=1.0, colorGamma=1.0 等)
-  2. 设 PostProcessVolume 为不可见 (visible=false) 或确保参数为默认值
-  3. 设好目标参数后，enable PostProcessVolume
-  4. 禁止在步骤 1-2 期间截图——截图会被自动阻止
-
-完成以上步骤后，调 assess_lighting(reference_path) 进入 TUNING Tier 3。
+PostProcess 参数已重置为默认值。继续 TUNING Tier 3。
+调 assess_lighting(reference_path) 进入 Tier 3 调参阶段。
 `,
 
 	FINAL: (_s) => `
 ## 当前阶段: FINAL VERIFICATION
 
 所有 Tier 的调参已完成。现在做最终确认:
+  调 assess_lighting(reference_path) 做最后一次全维度检查。
 
-  1. 调 assess_lighting(reference_path) 做最后一次全维度检查
-  2. 特别关注 artificiality 字段——如果检测到人工感，需要回退 PostProcess 重新开始
-
-如果所有维度 gap=minor 且无人工感 -> 调参完成。
+如果所有 aspect close_enough → 调参完成。
 `,
 
 	DONE: (_s) => `
@@ -96,108 +70,241 @@ export function buildPhaseContext(state: PhaseState): string {
 	return template(state);
 }
 
-/** 构建 blocker 摘要文本 */
-export function buildBlockerSummary(state: PhaseState): string {
-	const blockers = state.blockingDimensions;
-	if (!blockers || blockers.length === 0) return "";
+// ═══════════════════════════════════════════
+// buildAnalysisSummary (替换旧 buildGapSummary)
+// ═══════════════════════════════════════════
 
-	let summary = "\n## 阻塞维度 (必须先解决)\n\n";
-	for (const b of blockers) {
-		summary += `  [BLOCKED] ${b}\n`;
-	}
-	return summary;
-}
-
-/** 构建 gap 摘要文本 (按 Tier 分组的维度明细表) */
-export function buildGapSummary(state: PhaseState): string {
-	const entries = state.lastGapEntries;
+export function buildAnalysisSummary(state: PhaseState): string {
+	const entries = state.lastAnalysis;
 	if (!entries || entries.length === 0) return "";
 
-	const trends = getDimensionTrends(state);
-
 	// 按 Tier 分组
-	const tierNames: Record<number, string> = {
-		0: "PRIORITY",
-		1: "Tier 1 -- CORE_LIGHTING (先解决)",
-		2: "Tier 2 -- ATMOSPHERE (Tier 1 完成后才能调)",
-		3: "Tier 3 -- POSTPROCESS (Tier 1-2 完成后才能调)",
-	};
-
-	const byTier = new Map<number, GapEntry[]>();
+	const byTier = new Map<number, AnalysisEntry[]>();
 	for (const e of entries) {
 		const list = byTier.get(e.tier) || [];
 		list.push(e);
 		byTier.set(e.tier, list);
 	}
 
-	let summary = "\n## 当前 Gap 状态\n";
+	let summary = "\n## 当前分析状态\n";
 
-	for (const tier of [0, 1, 2, 3]) {
+	for (const tier of [1, 2, 3]) {
 		const tierEntries = byTier.get(tier);
 		if (!tierEntries || tierEntries.length === 0) continue;
 
-		summary += `\n${tierNames[tier] || `Tier ${tier}`}:\n`;
+		summary += `\nTier ${tier}${tier === state.tier ? ` (第 ${state.tierRoundCount}/${TIER_MAX_ROUNDS} 轮)` : ""}:\n`;
 		for (const e of tierEntries) {
-			const severityLabel = e.gap === "major" ? "[MAJOR]" : e.gap === "moderate" ? "[MODERATE]" : "[MINOR]";
-			let line = `  ${e.dimension.padEnd(20)} ${severityLabel.padEnd(10)} ${e.direction}`;
+			const marker = e.status === "needs_adjustment" ? "[needs_adjustment]" : "[close_enough]";
+			summary += `  ${marker} ${e.aspect}\n`;
 
-			// 量化数字 (如果有)
-			if (e.quantitative) {
-				line += `\n${"".padEnd(35)}ref ${e.quantitative.refValue} -> cur ${e.quantitative.curValue} (delta ${e.quantitative.delta})`;
+			if (e.suggestion) {
+				summary += `    ${e.suggestion}\n`;
 			}
-
-			// 趋势 (如果有历史数据)
-			const trend = trends[e.dimension];
-			if (trend) {
-				const trendLabel =
-					trend.status === "converging"
-						? "converging (趋向参考,建议考虑进入下一Tier)"
-						: trend.status === "oscillating"
-							? "oscillating (方向反复,可能已接近极限)"
-							: trend.status === "worsening"
-								? "worsening (方向错误,请反向调整)"
-								: "stable (无显著变化)";
-				line += `\n${"".padEnd(35)}trend: ${trend.history} ${trendLabel}`;
-			}
-
-			// Vision 定性描述 (如果有)
-			if (e.qualitative) {
-				line += `\n${"".padEnd(35)}${e.qualitative}`;
-			}
-
-			summary += `${line}\n`;
 		}
 	}
 
-	// 直方图相关性
-	if (state.lastHistogramCorrelation < 1) {
-		const corrLabel =
-			state.lastHistogramCorrelation < 0.3
-				? "低 (画面整体色调分布差异大，检查是否存在结构性不匹配)"
-				: state.lastHistogramCorrelation < 0.5
-					? "中 (存在整体色调偏差)"
-					: "高";
-		summary += `\n直方图相关性: ${state.lastHistogramCorrelation.toFixed(2)} (${corrLabel})\n`;
+	if (state.lastOverall) {
+		summary += `\nVision 总评: ${state.lastOverall}\n`;
 	}
 
-	// 收敛建议: 如果 Tier 1 各维度都已收敛或波动, 提示 LLM 考虑进入下一 Tier
-	if (state.phase === "TUNING" && state.tier === 1 && state.assessCount >= 2) {
-		if (isTierOneSettled(state)) {
-			summary +=
-				"\n[Tier 1 各量化维度已基本收敛或波动。继续调 Tier 1 可能收益递减。]\n" +
-				"[建议: 调 assess_lighting 确认状态后，考虑进入 Tier 2。]\n";
-		}
-	}
-
-	if (state.assessCount > 0) {
-		summary += `\nassess_lighting: ${state.assessCount}/15  |  check_dimension: ${state.checkCount}/20`;
-	}
+	summary += `\nassess_lighting: ${state.assessCount}/30`;
 
 	return summary;
 }
 
 // ═══════════════════════════════════════════
-// Issue 008c — 预设匹配建议
+// 收尾提示 (tierRoundCount >= TIER_MAX_ROUNDS)
+// ═══════════════════════════════════════════
+
+function buildWindDownHint(state: PhaseState): string {
+	if (state.tierRoundCount < TIER_MAX_ROUNDS) return "";
+	if (state.phase !== "TUNING") return "";
+
+	// 检查当前 tier 是否还有 needs_adjustment
+	const hasNeedsAdj = state.lastAnalysis.some(
+		(a) => a.tier === state.tier && a.status === "needs_adjustment",
+	);
+	if (!hasNeedsAdj) return "";
+
+	let hint = `\n--\nTier ${state.tier} 已进行 ${TIER_MAX_ROUNDS} 轮调参。\n`;
+
+	if (state.bestRound) {
+		hint += `第 ${state.bestRound.assessIndex} 轮曾达到最佳状态 (${state.bestRound.closeEnoughCount}/${state.bestRound.closeEnoughCount + state.bestRound.needsAdjustmentCount} aspects close_enough)。\n`;
+	}
+
+	hint += "如当前参数已接近该状态，建议接受现状，停止当前 Tier 调参并关注更高 Tier 的问题。\n";
+	return hint;
+}
+
+// ═══════════════════════════════════════════
+// buildQuantitativeTrendSummary (新增)
+// ═══════════════════════════════════════════
+
+function trendLabel(snapshots: QuantitativeSnapshot[], key: (s: QuantitativeSnapshot) => number, isDiff = false): string {
+	if (snapshots.length < 2) return "—";
+
+	const oldest = key(snapshots[0]);
+	const newest = key(snapshots[snapshots.length - 1]);
+	const ratio = oldest !== 0 ? newest / oldest : 1;
+
+	// 连续 3 轮波动 < 5% → 停滞
+	if (snapshots.length === 3) {
+		const v0 = key(snapshots[0]);
+		const v1 = key(snapshots[1]);
+		const v2 = key(snapshots[2]);
+		const maxVal = Math.max(Math.abs(v0), Math.abs(v1), Math.abs(v2)) || 1;
+		const range = (Math.max(v0, v1, v2) - Math.min(v0, v1, v2)) / maxVal;
+		if (range < 0.05) return "停滞";
+	}
+
+	if (ratio < 0.9) return isDiff ? "改善" : "收敛";
+	if (ratio > 1.1) return isDiff ? "恶化" : "扩大";
+	return "波动";
+}
+
+/**
+ * 检测亮度震荡: 最近 3 轮 deltaPct 符号交替且振幅 > 10% → auto-exposure 未稳定。
+ */
+function luminanceOscillationHint(snapshots: QuantitativeSnapshot[]): string {
+	if (snapshots.length < 3) return "";
+
+	const d0 = snapshots[0].luminanceDeltaPct;
+	const d1 = snapshots[1].luminanceDeltaPct;
+	const d2 = snapshots[2].luminanceDeltaPct;
+
+	// 符号交替: +→-→+ 或 -→+→-
+	const signFlip = (d0 > 0 && d1 < 0 && d2 > 0) || (d0 < 0 && d1 > 0 && d2 < 0);
+	if (!signFlip) return "";
+
+	// 振幅: max - min > 10%
+	const amplitude = Math.max(Math.abs(d0), Math.abs(d1), Math.abs(d2))
+		- Math.min(Math.abs(d0), Math.abs(d1), Math.abs(d2));
+	if (amplitude < 10) return "";
+
+	// 找到最佳轮
+	let bestIdx = 0;
+	let bestAbs = Math.abs(d0);
+	for (let i = 1; i < 3; i++) {
+		const abs = Math.abs([d0, d1, d2][i]);
+		if (abs < bestAbs) { bestAbs = abs; bestIdx = i; }
+	}
+	const bestIter = snapshots[bestIdx].assessIndex;
+
+	return (
+		`[亮度震荡检测] 最近 3 轮亮度 delta% 符号交替 (${d0 >= 0 ? "+" : ""}${d0.toFixed(1)}% → ` +
+		`${d1 >= 0 ? "+" : ""}${d1.toFixed(1)}% → ${d2 >= 0 ? "+" : ""}${d2.toFixed(1)}%) -- ` +
+		`auto-exposure 可能未稳定。建议回退到第 ${bestIter} 轮 (delta 仅 ${bestAbs.toFixed(1)}%)，等待 3 秒后重新评估。\n`
+	);
+}
+
+function deltaEHint(snapshots: QuantitativeSnapshot[]): string {
+	if (snapshots.length === 0) return "";
+	const newest = snapshots[snapshots.length - 1].deltaE_mean;
+	const trend = trendLabel(snapshots, (s) => s.deltaE_mean);
+	if (newest < 3) {
+		return `Delta E mean 降至 ${newest.toFixed(1)} -- 感知阈值约 3，继续微调收益递减。\n`;
+	}
+	if (newest < 6 && trend === "收敛") {
+		return `Delta E mean ${newest.toFixed(1)} -- 仍在感知阈值之上但持续改善。\n`;
+	}
+	return "";
+}
+
+function skyRatioHint(snapshots: QuantitativeSnapshot[]): string {
+	if (snapshots.length === 0) return "";
+	const newest = snapshots[snapshots.length - 1];
+	const groundDeviation = Math.abs(newest.groundLuminanceRatio - 0.6); // rough: ground ~60% of image
+	if (newest.skyLuminanceRatio > 0.3 && groundDeviation < 0.15) {
+		return `天空区域持续贡献 ~${Math.round(newest.skyLuminanceRatio * 100)}% 全局亮度偏差 -- 全局 brightness 数值受天空主导，不应作为 DirectionalLight 调参唯一依据。\n`;
+	}
+	return "";
+}
+
+export function buildQuantitativeTrendSummary(state: PhaseState): string {
+	const snapshots = state.quantitativeSnapshots;
+	if (snapshots.length < 2) return "";
+
+	// Build header
+	const headers = snapshots.map((s) => `#${s.assessIndex}`).join(" | ");
+	let summary = `\n## 定量趋势 (最近 ${snapshots.length} 轮)\n\n`;
+	summary += `| 指标 | ${headers} | 趋势 |\n`;
+	summary += `|------|${snapshots.map(() => "-----").join("-")}|------|\n`;
+
+	// Luminance delta % (most sensitive to auto-exposure oscillation)
+	const lumVals = snapshots.map((s) => `${s.luminanceDeltaPct >= 0 ? "+" : ""}${s.luminanceDeltaPct.toFixed(1)}%`).join(" | ");
+	summary += `| 亮度 delta% | ${lumVals} | ${trendLabel(snapshots, (s) => Math.abs(s.luminanceDeltaPct), true)} |\n`;
+
+	// Delta E mean
+	const deVals = snapshots.map((s) => s.deltaE_mean.toFixed(1)).join(" | ");
+	summary += `| Delta E mean | ${deVals} | ${trendLabel(snapshots, (s) => s.deltaE_mean)} |\n`;
+
+	// Delta E p90
+	const dep90Vals = snapshots.map((s) => s.deltaE_p90.toFixed(1)).join(" | ");
+	summary += `| Delta E p90 | ${dep90Vals} | ${trendLabel(snapshots, (s) => s.deltaE_p90)} |\n`;
+
+	// Chroma diff
+	const chromaVals = snapshots.map((s) => s.chroma_diff.toFixed(1)).join(" | ");
+	summary += `| Chroma diff | ${chromaVals} | ${trendLabel(snapshots, (s) => s.chroma_diff, true)} |\n`;
+
+	// Sky luminance ratio
+	const skyVals = snapshots.map((s) => `${Math.round(s.skyLuminanceRatio * 100)}%`).join(" | ");
+	summary += `| 天空亮度占比 | ${skyVals} | ${trendLabel(snapshots, (s) => s.skyLuminanceRatio)}${snapshots.length === 3 && trendLabel(snapshots, (s) => s.skyLuminanceRatio) === "停滞" ? " -- 天空仍主导" : ""} |\n`;
+
+	// Ground luminance ratio
+	const groundVals = snapshots.map((s) => `${Math.round(s.groundLuminanceRatio * 100)}%`).join(" | ");
+	summary += `| 地面亮度占比 | ${groundVals} | ${trendLabel(snapshots, (s) => s.groundLuminanceRatio)} |\n`;
+
+	// Histogram correlation
+	const histVals = snapshots.map((s) => s.histogramCorrelation.toFixed(2)).join(" | ");
+	summary += `| 直方图相关 | ${histVals} | ${trendLabel(snapshots, (s) => s.histogramCorrelation)} |\n`;
+
+	summary += "\n";
+
+	// Luminance oscillation detection
+	summary += luminanceOscillationHint(snapshots);
+
+	// Delta E threshold hint
+	summary += deltaEHint(snapshots);
+
+	// Sky ratio hint
+	summary += skyRatioHint(snapshots);
+
+	return summary;
+}
+
+// ═══════════════════════════════════════════
+// 注入编排 (提供给 index.ts)
+// ═══════════════════════════════════════════
+
+export function buildInjectionAppendix(state: PhaseState, presetSuggestion?: string): string {
+	const parts: string[] = [];
+
+	// 预设匹配建议 (008c)
+	if (presetSuggestion) parts.push(presetSuggestion);
+
+	// Phase context
+	const phaseCtx = buildPhaseContext(state);
+	if (phaseCtx) parts.push(phaseCtx);
+
+	// Analysis summary
+	const analysis = buildAnalysisSummary(state);
+	if (analysis) parts.push(analysis);
+
+	// Quantitative trend (assessCount >= 3)
+	if (state.assessCount >= 3) {
+		const trend = buildQuantitativeTrendSummary(state);
+		if (trend) parts.push(trend);
+	}
+
+	// Wind-down hint (tierRoundCount >= 10)
+	const windDown = buildWindDownHint(state);
+	if (windDown) parts.push(windDown);
+
+	return parts.join("\n");
+}
+
+// ═══════════════════════════════════════════
+// Issue 008c — 预设匹配建议 (保持)
 // ═══════════════════════════════════════════
 
 import type { PresetMatch } from "../presets/types.ts";

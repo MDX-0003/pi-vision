@@ -2,3 +2,4 @@
 - [MCP SDK callTool 三参数](memory/mcp-calltool-three-params.md) — callTool(params, resultSchema?, options?)，options 在第三位
 - [UE 工具名净化](memory/ue-tool-name-sanitization.md) — UE 点号名 vs LLM 下划线名，两层命名系统
 - [TS 导入扩展名规则](memory/ts-import-extension-rule.md) — 相对导入必须写 .ts，不能 .js 也不能省略
+- [PPV set_properties 结构陷阱](memory/ppv-set-properties-struct.md) — PPV Settings 是嵌套 struct，必须 values JSON+bOverride+整体写回，不能 properties object 单属性 set

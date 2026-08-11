@@ -25,6 +25,20 @@ LLM (Pi) ←→ ue-harness extension ←→ UE MCP Server (:8000)
 | `src/ue-client/mcp-client.ts` | `UeClient` 类：MCP 连接管理、工具发现、工具调用、错误分类、自动重连 |
 | `src/ue-client/schema-converter.ts` | JSON Schema（UE）→ TypeBox schema（Pi）自动转换 |
 | `src/ue-client/types.ts` | 共享类型：`UeToolDefinition`, `McpCallResult`, `PiToolRegistration`, `UeHarnessConfig` |
+| `src/state.ts` | 扩展单例状态：`UeClient`, `VisionClient`, `PhaseState`, `_activeReferencePath` |
+| `src/vision/color-utils.ts` | **009a**: 色彩空间转换 + 直方图工具函数（RGB↔CIELAB/HSV, JSD, Pearson） |
+| `src/vision/metrics.ts` | **009a**: 12 项定量指标计算（亮度、分通道、tonalRB、deltaE、chroma、hueJSD、regional 等） |
+| `src/vision/prompts.ts` | **009b**: `ASSESS_LIGHTING_PROMPT`（串行架构）+ `buildTaggingPrompt()`（008a） |
+| `src/vision/analyzer.ts` | **008a**: Vision 标签分析器（`analyzeAndTag`） |
+| `src/vision/capture.ts` | 视口截图封装（`captureViewport`） |
+| `src/vision/vision-client.ts` | Vision API 客户端 |
+| `src/tools/assess-lighting.ts` | **009b**: `assess_lighting` — 串行架构（Stage1 定量+标签并行, Stage2 Vision 决策） |
+| `src/tools/map-atmosphere.ts` | **004**: `map_atmosphere` — 场景氛围组件扫描 |
+| `src/tools/atmosphere-whitelist.ts` | 氛围属性 whitelist + Tier 映射 |
+| `src/workflow/phase-machine.ts` | **009c**: Phase 状态机 — tier 轮数追踪, bestRound, 定量快照 |
+| `src/workflow/injections.ts` | **009c**: `before_agent_start` 注入 — analysis summary, 趋势, 收尾提示, 预设匹配 |
+| `src/workflow/guard-rules.ts` | **009d**: `tool_call` 拦截 — 硬上限, Phase/Tier 门控（artificiality/further 已移除） |
+| `src/presets/` | **008**: 预设系统（types, store, capture, match, apply, tools） |
 
 ---
 
@@ -34,13 +48,16 @@ LLM (Pi) ←→ ue-harness extension ←→ UE MCP Server (:8000)
 |:---:|------|:--:|
 | 001 | UE MCP 连通性验证（Spike） | ✅ 已完成 |
 | 002 | MCP Bridge — 动态工具注册 + 扩展骨架 | ✅ 已完成 |
-| 003 | Vision 管线 — `assess_lighting` | ⬜ 下一个 |
-| 004 | 场景发现 + 快速验证 — `map_atmosphere` + `check_dimension` | ⬜ 待定 |
-| 005 | 工作流编排 — Phase 状态机 + Tier 门控 | ⬜ 待定 |
-| 006 | 打磨 — Skills 迁移 + 文档 + 可观测性 | ⬜ 待定 |
+| 003 | Vision 管线 — `assess_lighting` v1 | ✅ 已完成（已被 009 重写） |
+| 004 | 场景发现 + 快速验证 — `map_atmosphere` + `check_dimension` | ✅ `map_atmosphere` 完成，`check_dimension` 已删除 |
+| 005 | 工作流编排 — Phase 状态机 + Tier 门控 | ✅ 已完成（已在 009 重写） |
+| 008 | 预设系统 — 标签分析 + 快照 + 匹配 + 应用 | ✅ 已完成（116 tests） |
+| 009 | `assess_lighting` 串行化重构 + 定量扩容 + Vision 角色重定义 | ✅ 已完成（48 tests） |
+| 010 | 实际 UE 场景验证 + Prompt smoke test | ⬜ 下一个 |
 
 **完整 PRD**：[docs/ue-harness-extension-prd.md](docs/ue-harness-extension-prd.md)
-**最近 handoff**：[docs/handoff/0809.md](docs/handoff/0809.md)
+**最近 handoff**：[docs/handoff/0811-issue-009-redesign.md](docs/handoff/0811-issue-009-redesign.md)
+**Issue 009 PRD**：[docs/issue/009/009-assess-lighting-redesign.md](docs/issue/009/009-assess-lighting-redesign.md)
 
 ---
 
@@ -59,8 +76,9 @@ UE 工具名含点号（如 `ToolsetRegistry.SceneTools.SceneTools.find_actors`�
 
 ### 3.3 自研工具 vs UE 透传工具
 
-- **UE 透传工具**（218 个）：`session_start` 时通过 `listAllTools()` → `convertTool()` → `pi.registerTool()` 批量注册，执行时调用 `_ueClient.callToolWithRetry(ueName, params)`
-- **自研工具**（3 个占位）：`map_atmosphere`, `assess_lighting`, `check_dimension`，硬编码占位返回，等 Issue 003/004 实现
+- **UE 透传工具**：`session_start` 时通过 `listAllTools()` → `convertTool()` → `pi.registerTool()` 批量注册，执行时调用 `_ueClient.callToolWithRetry(ueName, params)`
+- **自研工具**（2 个）：`map_atmosphere`（场景扫描）、`assess_lighting`（串行 Vision 诊断）。`check_dimension` 已在 009 中删除
+- **预设工具**（4 个）：`save_preset`, `list_presets`, `delete_preset`, `load_preset`（008 预设系统）
 
 ### 3.4 工具排除白名单
 
@@ -133,7 +151,8 @@ node --import tsx packages/ue-harness/test/compile-schemas.ts
 | 文档 | 路径 |
 |------|------|
 | 完整 PRD | [docs/ue-harness-extension-prd.md](docs/ue-harness-extension-prd.md) |
-| 最近 Handoff | [docs/handoff/0809.md](docs/handoff/0809.md) |
+| Issue 009 PRD | [docs/issue/009/009-assess-lighting-redesign.md](docs/issue/009/009-assess-lighting-redesign.md) |
+| 最近 Handoff | [docs/handoff/0811-issue-009-redesign.md](docs/handoff/0811-issue-009-redesign.md) |
 | Bug 记录 | [docs/bug-notes/](docs/bug-notes/) |
 | AGENTS.md（全局规则） | [AGENTS.md](AGENTS.md) |
 
@@ -182,6 +201,10 @@ Memory 示例：
 | 日期 | 问题 | 文档 |
 |------|------|------|
 | 2026-08-09 | `as any` 把 `{ signal }` 偷渡进 `callTool` 的 `resultSchema` 参数位，导致所有工具调用失败 | [docs/bug-notes/mcp-sdk-calltool-params-bug.md](docs/bug-notes/mcp-sdk-calltool-params-bug.md) |
+| 2026-08-11 | 009: `computeGap()` 取 max(定量,Vision) 导致 brightness 被 auto-exposure 污染的定量永远报 major，LLM 死锁于 Tier 1 | 方案：串行架构，定量数据注入 Vision prompt，代码层不再调和 |
+| 2026-08-11 | 009: artificiality catch-22 — guard 要求回退 PostProcess → 回退是 PostProcess 写操作 → 同一个 guard 拦截 | 方案：SETUP 阶段扩展直接调 MCP 重置 PostProcess，绕过 guard |
+| 2026-08-11 | 009: PRD 工具名错误 `ToolsetRegistry.SceneTools...` → 实际为 `toolset_registry.toolsets.core.scene.SceneTools...` | 已修正 PRD §7.5；工具名均为 snake_case 小写 |
+| 2026-08-11 | 009: PRD `set_properties` 参数错误 `{ values: JSON.stringify(...) }` → 实际为 `{ properties: {...} }` | 已修正 PRD §7.5；参考 `apply.ts` 的实际调用签名 |
 
 **这是教训区的起点。** 后续发现任何 bug 或踩坑经验，按 §7 的规范同时更新：
 1. 在 `docs/bug-notes/` 写完整 bug 报告

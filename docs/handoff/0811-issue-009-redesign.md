@@ -1,8 +1,8 @@
 # Handoff — Issue 009: assess_lighting 串行化重构
 
 **日期**: 2026-08-11
-**状态**: PRD 完成，待确认后开工
-**PRD**: [docs/issue/009-assess-lighting-redesign.md](../issue/009-assess-lighting-redesign.md)
+**状态**: PRD v3 完成（根因判定 Prompt + PostProcess 默认值重置），待确认后开工
+**PRD**: [docs/issue/009/009-assess-lighting-redesign.md](../issue/009/009-assess-lighting-redesign.md) (v3)
 **关联**: [Issue 008 预设系统 v2 handoff](./0811-preset-system-v2.md)
 
 ---
@@ -157,6 +157,25 @@ guard-rules.ts 的设计假设"blocking 维度必须先解决才能进更高 tie
 | assess 从 5 次 Vision → 2 次 | 1 次氛围（串行）+ 1 次标签（并行） |
 | Tier 完成 = all aspects close_enough | 不再有 rating/gap/major/minor。Vision 说了算 |
 | close_enough ≠ 完全一致 | Prompt 明确告知 Vision：见好就收 |
+
+### 7.1 v2 新增 (2026-08-11)
+
+| 决策 | 内容 |
+|------|------|
+| Tier 轮数上限 = 10，不强制推进 | `tierRoundCount >= 10` 时注入收尾提示，LLM 自行决定是否停止。正常路径 (all close_enough) 仍自动升级 |
+| bestRound 追踪 | 每轮记录 close_enough 最多的那一轮，收尾提示引用"第 N 轮曾达到最佳状态" |
+| 跨轮定量趋势注入 | `buildQuantitativeTrendSummary`: 最近 3 轮 Delta E / Chroma / 天空占比 / 直方图相关的趋势表格 + 阈值提示 (Delta E < 3 等) |
+| 注入格式约束 | 无 emoji，符号 ([needs_adjustment] / -> / -- / 表格) 仅用于结构分层 |
+
+### 7.2 v3 新增 (2026-08-11)
+
+| 决策 | 内容 |
+|------|------|
+| Vision 的 tier 字段 = 根因判定 | 不再是"这个 aspect 属于哪个 tier 的症状分类"，而是"哪个 tier 的参数能解决此差异的根因"。如果根因超出当前 tier 的参数范围，标记 close_enough + 注明目标 tier |
+| `__CURRENT_TIER_INFO__` 占位符 | Prompt 运行时注入当前 tier 编号 + 可调参数列表 + 不可调参数明示，让 Vision 了解当前阶段的调参边界 |
+| SETUP 阶段 PostProcess 重置 | 首次 assess_lighting 时由扩展直接调用 UE MCP 重置 PostProcess color grading 参数到默认值。绕过 guard-rules catch-22 |
+| artificiality 拦截移除 | guard-rules.ts 的 `artificialityDetected` 逻辑随旧架构删除；重置已在 SETUP 完成，Tier 3 的 PostProcess 调参是正常行为 |
+| 准则 8: Delta E < 3 阈值 | Prompt 新增：当 deltaE.mean < 3 时，Vision 应对无明显视觉差异的 aspect 标记 close_enough |
 
 ---
 
