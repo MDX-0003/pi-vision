@@ -21,7 +21,6 @@ export interface PresetEntry {
 	tags: string[]; // 开放式标签（0-5 个），用于匹配
 	screenshot: string; // 截图文件名（相对预设目录）
 	actors: Record<string, PresetActor>;
-	postprocessReset: boolean;
 	created: string; // ISO 8601
 }
 

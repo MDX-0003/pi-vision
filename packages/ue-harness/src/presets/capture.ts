@@ -3,7 +3,7 @@
  *
  * 调用 UE MCP 工具获取 5 类氛围组件当前属性。
  * 复用 atmosphere-whitelist.ts 的 ATMOSPHERE_COMPONENT_GLOBS 和 ATMOSPHERE_WHITELIST。
- * PostProcessVolume 不保存属性——仅在外层标记 postprocessReset。
+ * * PostProcessVolume 不保存属性。
  */
 
 import type { UeToolCaller } from "../ue-client/types.ts";
@@ -75,7 +75,7 @@ async function resolveComponentRefPaths(
 
 /**
  * 快照当前场景中 5 类氛围组件的属性。
- * PostProcessVolume 跳过（不存属性，仅标记 postprocessReset）。
+ * * PostProcessVolume 跳过（不存属性）。
  */
 export async function capturePresetState(caller: UeToolCaller): Promise<CaptureResult> {
 	const findActorsName = "toolset_registry.toolsets.core.scene.SceneTools.find_actors";

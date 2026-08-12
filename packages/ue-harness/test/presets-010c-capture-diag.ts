@@ -6,6 +6,9 @@
  * 运行: node --import tsx test/presets-010c-capture-diag.ts
  */
 
+import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { homedir } from "os";
+import { join } from "path";
 import { UeClient } from "../src/ue-client/mcp-client.ts";
 import { ATMOSPHERE_COMPONENT_GLOBS, ATMOSPHERE_WHITELIST } from "../src/tools/atmosphere-whitelist.ts";
 import { capturePresetState } from "../src/presets/capture.ts";
@@ -216,12 +219,18 @@ async function main() {
 		tags: [],
 		screenshot: "",
 		actors: captureResult.actors,
-		postprocessReset: true,
+		
 		created: new Date().toISOString(),
 	};
 	console.log(JSON.stringify(presetEntry, null, 2));
 	console.log(`\n${DIAG} Actor count: ${Object.keys(captureResult.actors).length}`);
 	console.log(`${DIAG} Missing actors: ${captureResult.missingActors.length > 0 ? captureResult.missingActors.join(", ") : "(none)"}`);
+
+	// 保存到 ~/.pi/agent/presets/
+	const presetDir = join(homedir(), ".pi", "agent", "presets", "diagnostic-snapshot");
+	if (!existsSync(presetDir)) mkdirSync(presetDir, { recursive: true });
+	writeFileSync(join(presetDir, "preset.json"), JSON.stringify(presetEntry, null, 2), "utf-8");
+	console.log(`${DIAG} Preset saved to: ${presetDir}/preset.json`);
 
 	await ueClient.disconnect();
 }

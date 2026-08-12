@@ -100,7 +100,6 @@ export async function executeSavePreset(params: { name: string }): Promise<Agent
 		tags: tagResult.tags,
 		screenshot: `${params.name}.png`,
 		actors: scene.actors,
-		postprocessReset: true,
 		created: new Date().toISOString(),
 	};
 
