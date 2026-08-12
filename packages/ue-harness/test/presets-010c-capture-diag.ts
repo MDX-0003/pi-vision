@@ -8,13 +8,14 @@
 
 import { UeClient } from "../src/ue-client/mcp-client.ts";
 import { ATMOSPHERE_COMPONENT_GLOBS, ATMOSPHERE_WHITELIST } from "../src/tools/atmosphere-whitelist.ts";
+import { capturePresetState } from "../src/presets/capture.ts";
 
 const DIAG = "[DIAG]";
 
 const FIND_ACTORS = "toolset_registry.toolsets.core.scene.SceneTools.find_actors";
 const LIST_PROPS = "toolset_registry.toolsets.core.object.ObjectTools.list_properties";
 const GET_PROPS = "toolset_registry.toolsets.core.object.ObjectTools.get_properties";
-const GET_TRANSFORM = "toolset_registry.toolsets.core.object.ObjectTools.get_actor_transform";
+const GET_TRANSFORM = "toolset_registry.toolsets.core.actor.ActorTools.get_actor_transform";
 
 function parseValue(text: string): unknown {
 	try {
@@ -177,7 +178,7 @@ async function main() {
 			// Step 6: transform (DirectionalLight only)
 			if (cfg.actorClass === "DirectionalLight") {
 				const gtResult = await ueClient.callTool(GET_TRANSFORM, {
-					instance: { refPath: actorRefPath },
+					actor: { refPath: actorRefPath },
 				});
 				if (gtResult.isError) {
 					console.log(`${DIAG}     get_actor_transform ERROR: [${gtResult.errorType}] ${gtResult.text.substring(0, 100)}`);
@@ -205,6 +206,22 @@ async function main() {
 		console.log(`${DIAG} Skipped (error): [${skipped.join(", ")}]`);
 	}
 	console.log(`${DIAG} Total expected: ${total.length} component types`);
+
+	// ── 调用真实的 capturePresetState 并输出 preset JSON ──
+	console.log(`\n${DIAG} === capturePresetState() result (preset JSON) ===`);
+	const captureResult = await capturePresetState(ueClient);
+	const presetEntry = {
+		name: "diagnostic-snapshot",
+		description: "Diagnostic capture",
+		tags: [],
+		screenshot: "",
+		actors: captureResult.actors,
+		postprocessReset: true,
+		created: new Date().toISOString(),
+	};
+	console.log(JSON.stringify(presetEntry, null, 2));
+	console.log(`\n${DIAG} Actor count: ${Object.keys(captureResult.actors).length}`);
+	console.log(`${DIAG} Missing actors: ${captureResult.missingActors.length > 0 ? captureResult.missingActors.join(", ") : "(none)"}`);
 
 	await ueClient.disconnect();
 }

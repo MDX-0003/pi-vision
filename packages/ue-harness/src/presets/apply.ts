@@ -20,7 +20,7 @@ export interface ApplyResult {
  * 单线程顺序执行。
  */
 export async function applyPreset(caller: UeToolCaller, entry: PresetEntry): Promise<ApplyResult> {
-	const setTransformName = "toolset_registry.toolsets.core.object.ObjectTools.set_actor_transform";
+	const setTransformName = "toolset_registry.toolsets.core.actor.ActorTools.set_actor_transform";
 	const setPropsName = "toolset_registry.toolsets.core.object.ObjectTools.set_properties";
 
 	const applied: Record<string, number> = {};
@@ -31,7 +31,7 @@ export async function applyPreset(caller: UeToolCaller, entry: PresetEntry): Pro
 			// 第一阶段: DirectionalLight 旋转
 			if (actor.transform) {
 				const tResult = await caller.callTool(setTransformName, {
-					instance: { refPath: actor.refPath },
+					actor: { refPath: actor.refPath },
 					transform: actor.transform,
 				});
 				if (tResult.isError) {

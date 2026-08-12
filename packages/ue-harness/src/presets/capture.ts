@@ -81,7 +81,7 @@ export async function capturePresetState(caller: UeToolCaller): Promise<CaptureR
 	const findActorsName = "toolset_registry.toolsets.core.scene.SceneTools.find_actors";
 	const listPropsName = "toolset_registry.toolsets.core.object.ObjectTools.list_properties";
 	const getPropsName = "toolset_registry.toolsets.core.object.ObjectTools.get_properties";
-	const getTransformName = "toolset_registry.toolsets.core.object.ObjectTools.get_actor_transform";
+	const getTransformName = "toolset_registry.toolsets.core.actor.ActorTools.get_actor_transform";
 
 	const actors: Record<string, PresetActor> = {};
 	const missingActors: string[] = [];
@@ -160,7 +160,7 @@ export async function capturePresetState(caller: UeToolCaller): Promise<CaptureR
 			if (cfg.actorClass === "DirectionalLight") {
 				try {
 					const gtResult = await caller.callTool(getTransformName, {
-						instance: { refPath: actorRefPath },
+						actor: { refPath: actorRefPath },
 					});
 					if (!gtResult.isError) {
 						const gtData = parseUeReturnValue(gtResult.text);
