@@ -50,6 +50,14 @@ async function main() {
 		process.exit(1);
 	}
 
+	// 加载所有工具集（connect 后必须先调 listAllTools，否则 callTool 报 Unknown tool）
+	try {
+		const allTools = await ueClient.listAllTools();
+		console.log(`${DIAG} Toolsets loaded: ${allTools.length} tools available`);
+	} catch (e) {
+		console.error(`${DIAG} Failed to list tools: ${(e as Error).message}`);
+	}
+
 	console.log(`${DIAG} === capturePresetState diagnostic ===\n`);
 
 	let captured = 0;
@@ -143,7 +151,18 @@ async function main() {
 				properties: propNames,
 			});
 			if (gvResult.isError) {
-				console.error(`${DIAG}     get_properties ERROR: [${gvResult.errorType}] ${gvResult.text.substring(0, 200)}`);
+				console.error(`${DIAG}     get_properties ERROR: [${gvResult.errorType}] ${gvResult.text.substring(0, 500)}`);
+				// 逐个重试以定位哪些属性有问题
+				console.log(DIAG + "     -- individual retry --");
+				for (const pn of propNames) {
+					const ir = await ueClient.callTool(GET_PROPS, {
+						instance: { refPath: resolvedRefPath },
+						properties: [pn],
+					});
+					const status = ir.isError ? "FAIL" : "OK";
+					const val = ir.isError ? ir.text.substring(0, 120) : JSON.stringify(parseValue(ir.text)).substring(0, 60);
+					console.log(DIAG + "       " + status + " " + pn + ": " + val);
+				}
 				skipped.push(`${cfg.actorClass} (get_props error)`);
 				continue;
 			}

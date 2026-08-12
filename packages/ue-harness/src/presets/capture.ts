@@ -135,17 +135,25 @@ export async function capturePresetState(caller: UeToolCaller): Promise<CaptureR
 
 			if (propNames.length === 0) continue;
 
-			let propValues: Record<string, unknown>;
-			try {
-				const gvResult = await caller.callTool(getPropsName, {
-					instance: { refPath: resolvedRefPath },
-					properties: propNames,
-				});
-				if (gvResult.isError) continue;
-				propValues = (parseUeReturnValue(gvResult.text) as Record<string, unknown>) ?? {};
-			} catch {
-				continue;
+			// 逐个读取属性值（容错：单个属性不可读不阻断其他）
+			const propValues: Record<string, unknown> = {};
+			for (const propName of propNames) {
+				try {
+					const gvResult = await caller.callTool(getPropsName, {
+						instance: { refPath: resolvedRefPath },
+						properties: [propName],
+					});
+					if (!gvResult.isError) {
+						const single = parseUeReturnValue(gvResult.text) as Record<string, unknown>;
+						if (single?.[propName] !== undefined) {
+							propValues[propName] = single[propName];
+						}
+					}
+				} catch {
+					/* 单个属性读取失败，继续下一个 */
+				}
 			}
+			if (Object.keys(propValues).length === 0) continue;
 
 			// Step 5: DirectionalLight 需要 transform
 			let transform: { rotation: { Pitch: number; Yaw: number; Roll: number } } | undefined;

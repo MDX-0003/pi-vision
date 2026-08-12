@@ -13,40 +13,83 @@ export interface PropertyAnnotation {
 	componentClass: string;
 }
 
-/** 氛围属性列表（去重后，按 (property, componentClass) 唯一） */
+/**
+ * 氛围属性列表（去重后，按 (property, componentClass) 唯一）。
+ *
+ * Issue 010c 修正：6 个属性名错误（多余 Color 后缀等），新增 ~30 个遗漏属性。
+ * 属性名以 UE list_properties 实际返回名为准。
+ */
 export const ATMOSPHERE_WHITELIST: PropertyAnnotation[] = [
-	// ── DirectionalLight ──
+	// ── DirectionalLight (LightComponent0) ──
 	{ property: "lightColor", componentClass: "DirectionalLightComponent" },
 	{ property: "intensity", componentClass: "DirectionalLightComponent" },
-	{ property: "atmosphereSunLightColor", componentClass: "DirectionalLightComponent" },
 	{ property: "temperature", componentClass: "DirectionalLightComponent" },
+	{ property: "bUseTemperature", componentClass: "DirectionalLightComponent" },
 	{ property: "lightSourceAngle", componentClass: "DirectionalLightComponent" },
-	{ property: "indirectLightingintensity", componentClass: "DirectionalLightComponent" },
-	{ property: "volumetricScatteringintensity", componentClass: "DirectionalLightComponent" },
+	{ property: "lightSourceSoftAngle", componentClass: "DirectionalLightComponent" },
+	{ property: "indirectLightingIntensity", componentClass: "DirectionalLightComponent" },
+	{ property: "volumetricScatteringIntensity", componentClass: "DirectionalLightComponent" },
+	{ property: "atmosphereSunLightIndex", componentClass: "DirectionalLightComponent" },
+	{ property: "bAtmosphereSunLight", componentClass: "DirectionalLightComponent" },
+	{ property: "atmosphereSunDiskColorScale", componentClass: "DirectionalLightComponent" },
+	{ property: "specularScale", componentClass: "DirectionalLightComponent" },
+	{ property: "diffuseScale", componentClass: "DirectionalLightComponent" },
+	{ property: "bCastShadowsOnAtmosphere", componentClass: "DirectionalLightComponent" },
+	{ property: "bCastShadowsOnClouds", componentClass: "DirectionalLightComponent" },
+	{ property: "cloudScatteredLuminanceScale", componentClass: "DirectionalLightComponent" },
+	{ property: "shadowAmount", componentClass: "DirectionalLightComponent" },
 
-	// ── SkyLight ──
+	// ── SkyLight (SkyLightComponent0) ──
 	{ property: "lightColor", componentClass: "SkyLightComponent" },
 	{ property: "intensity", componentClass: "SkyLightComponent" },
+	{ property: "indirectLightingIntensity", componentClass: "SkyLightComponent" },
+	{ property: "volumetricScatteringIntensity", componentClass: "SkyLightComponent" },
+	{ property: "lowerHemisphereColor", componentClass: "SkyLightComponent" },
+	{ property: "contrast", componentClass: "SkyLightComponent" },
+	{ property: "occlusionTint", componentClass: "SkyLightComponent" },
 
-	// ── SkyAtmosphere ──
-	{ property: "rayleighScatteringColor", componentClass: "SkyAtmosphereComponent" },
-	{ property: "mieScatteringColor", componentClass: "SkyAtmosphereComponent" },
-	{ property: "mieAbsorptionColor", componentClass: "SkyAtmosphereComponent" },
+	// ── SkyAtmosphere (SkyAtmosphereComponent) ──
+	{ property: "rayleighScattering", componentClass: "SkyAtmosphereComponent" },
+	{ property: "rayleighScatteringScale", componentClass: "SkyAtmosphereComponent" },
 	{ property: "rayleighExponentialDistribution", componentClass: "SkyAtmosphereComponent" },
+	{ property: "mieScattering", componentClass: "SkyAtmosphereComponent" },
+	{ property: "mieScatteringScale", componentClass: "SkyAtmosphereComponent" },
 	{ property: "mieExponentialDistribution", componentClass: "SkyAtmosphereComponent" },
+	{ property: "mieAbsorption", componentClass: "SkyAtmosphereComponent" },
+	{ property: "mieAbsorptionScale", componentClass: "SkyAtmosphereComponent" },
+	{ property: "mieAnisotropy", componentClass: "SkyAtmosphereComponent" },
+	{ property: "multiScatteringFactor", componentClass: "SkyAtmosphereComponent" },
 	{ property: "groundAlbedo", componentClass: "SkyAtmosphereComponent" },
+	{ property: "skyLuminanceFactor", componentClass: "SkyAtmosphereComponent" },
+	{ property: "atmosphereHeight", componentClass: "SkyAtmosphereComponent" },
+	{ property: "heightFogContribution", componentClass: "SkyAtmosphereComponent" },
+	{ property: "aerialPerspectiveStartDepth", componentClass: "SkyAtmosphereComponent" },
 
-	// ── ExponentialHeightFog ──
+	// ── ExponentialHeightFog (HeightFogComponent0) ──
 	{ property: "fogDensity", componentClass: "ExponentialHeightFogComponent" },
 	{ property: "fogHeightFalloff", componentClass: "ExponentialHeightFogComponent" },
-	{ property: "fogInscatteringColor", componentClass: "ExponentialHeightFogComponent" },
+	{ property: "fogMaxOpacity", componentClass: "ExponentialHeightFogComponent" },
+	{ property: "fogCutoffDistance", componentClass: "ExponentialHeightFogComponent" },
+	{ property: "startDistance", componentClass: "ExponentialHeightFogComponent" },
+	{ property: "fogInscatteringLuminance", componentClass: "ExponentialHeightFogComponent" },
 	{ property: "directionalInscatteringExponent", componentClass: "ExponentialHeightFogComponent" },
-	{ property: "directionalInscatteringColor", componentClass: "ExponentialHeightFogComponent" },
+	{ property: "directionalInscatteringLuminance", componentClass: "ExponentialHeightFogComponent" },
+	{ property: "directionalInscatteringStartDistance", componentClass: "ExponentialHeightFogComponent" },
 	{ property: "secondFogData", componentClass: "ExponentialHeightFogComponent" },
+	{ property: "volumetricFogAlbedo", componentClass: "ExponentialHeightFogComponent" },
+	{ property: "volumetricFogEmissive", componentClass: "ExponentialHeightFogComponent" },
+	{ property: "volumetricFogExtinctionScale", componentClass: "ExponentialHeightFogComponent" },
+	{ property: "bEnableVolumetricFog", componentClass: "ExponentialHeightFogComponent" },
+	{ property: "inscatteringTextureTint", componentClass: "ExponentialHeightFogComponent" },
 
-	// ── VolumetricCloud ──
+	// ── VolumetricCloud (VolumetricCloudComponent) ──
 	{ property: "layerBottomAltitude", componentClass: "VolumetricCloudComponent" },
 	{ property: "layerHeight", componentClass: "VolumetricCloudComponent" },
+	{ property: "groundAlbedo", componentClass: "VolumetricCloudComponent" },
+	{ property: "planetRadius", componentClass: "VolumetricCloudComponent" },
+	{ property: "tracingMaxDistance", componentClass: "VolumetricCloudComponent" },
+	{ property: "shadowTracingDistance", componentClass: "VolumetricCloudComponent" },
+	{ property: "material", componentClass: "VolumetricCloudComponent" },
 
 	// ── PostProcessVolume ──
 	{ property: "whiteTemp", componentClass: "PostProcessVolume" },
