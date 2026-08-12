@@ -1,5 +1,5 @@
 /**
- * Issue 008a — store CRUD 测试
+ * Issue 010a — store CRUD 测试（简化版：tags 为 string[]）
  *
  * 运行: node test/presets-008a-store.mjs
  *
@@ -90,18 +90,11 @@ const TEST_ID = randomBytes(4).toString("hex");
 _dir = join(tmpdir(), `pi-presets-test-${TEST_ID}`);
 console.log(`Test dir: ${_dir}`);
 
-function makeEntry(name, timeOfDay) {
+function makeEntry(name, tag) {
 	return {
 		name,
 		description: `Test preset ${name}`,
-		tags: {
-			time_of_day: timeOfDay,
-			color_palette: "warm",
-			atmosphere: "clear",
-			light_direction: "front",
-			mood: "bright",
-		},
-		freeformTags: ["test"],
+		tags: [tag, "test"],
 		screenshot: `${name}.png`,
 		actors: {},
 		postprocessReset: false,
@@ -121,12 +114,10 @@ console.log("\n── store CRUD ──\n");
 	savePresetEntry(entry);
 	const loaded = loadPresetEntry("roundtrip-test");
 	check("save+load → entry exists", loaded !== null);
-	check("save+load → name matches", loaded?.name === "golden_hour" ? false : loaded?.name === "roundtrip-test");
-	check("save+load → tags preserved", loaded?.tags?.time_of_day === "golden_hour");
-	check("save+load → freeformTags preserved", loaded?.freeformTags?.[0] === "test");
+	check("save+load → name matches", loaded?.name === "roundtrip-test");
+	check("save+load → tags preserved", loaded?.tags?.includes("golden_hour") && loaded?.tags?.includes("test"));
 	check("save+load → actors preserved", loaded?.actors && Object.keys(loaded.actors).length === 0);
 	check("save+load → created preserved", typeof loaded?.created === "string" && loaded.created.length > 0);
-	// Clean up
 	deletePresetDir("roundtrip-test");
 })();
 
@@ -139,7 +130,6 @@ console.log("\n── store CRUD ──\n");
 	check("loadAllPresets → count 3", all.length === 3, `got ${all.length}`);
 	const names = all.map((p) => p.name).sort();
 	check("loadAllPresets → all names present", names.join(",") === "preset-a,preset-b,preset-c", names.join(","));
-	// Clean up
 	deletePresetDir("preset-a");
 	deletePresetDir("preset-b");
 	deletePresetDir("preset-c");
@@ -148,7 +138,6 @@ console.log("\n── store CRUD ──\n");
 // Case 3: corrupted JSON → skipped, not crashed
 (() => {
 	savePresetEntry(makeEntry("valid-one", "golden_hour"));
-	// Write a corrupted file manually
 	const corruptDir = join(_dir, "corrupt-one");
 	mkdirSync(corruptDir, { recursive: true });
 	writeFileSync(join(corruptDir, "preset.json"), "NOT VALID JSON{{{");
@@ -156,7 +145,6 @@ console.log("\n── store CRUD ──\n");
 	check("corrupted JSON → loadAllPresets does not crash", true);
 	check("corrupted JSON → valid preset still loaded", all.some((p) => p.name === "valid-one"));
 	check("corrupted JSON → corrupt entry not in list", !all.some((p) => p.name === "corrupt-one"));
-	// Clean up
 	deletePresetDir("valid-one");
 	deletePresetDir("corrupt-one");
 })();
@@ -203,16 +191,14 @@ console.log("\n── store CRUD ──\n");
 	savePresetEntry(v2);
 	const loaded2 = loadPresetEntry("overwrite-test");
 	check("overwrite → v2 overwrites", loaded2?.description === "version 2");
-	check("overwrite → tags updated", loaded2?.tags?.time_of_day === "dusk");
+	check("overwrite → tags updated", loaded2?.tags?.includes("dusk"));
 
 	deletePresetDir("overwrite-test");
 })();
 
 // Case 8: empty directory → loadAllPresets returns []
 (() => {
-	// All previous tests cleaned up their entries
 	const remaining = loadAllPresets();
-	// There might be leftover dirs from failed tests, just check it doesn't throw
 	check("empty dir → no crash", Array.isArray(remaining));
 })();
 

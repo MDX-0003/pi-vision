@@ -22,14 +22,12 @@ interface ComponentEntry {
 	property: string;
 	refPath: string;
 	currentValue?: unknown;
-	note?: string;
 }
 
 interface TierEntry {
 	tier: number;
 	label: string;
 	rationale: string;
-	dimensions: string[];
 	components: ComponentEntry[];
 }
 
@@ -108,10 +106,9 @@ async function resolveComponentRefPaths(
 	return paths;
 }
 
-/** 匹配 whitelist → 标注属性 */
-function annotateProperty(propertyName: string, componentClass: string): { dimension: string } | null {
-	const match = ATMOSPHERE_WHITELIST.find((a) => a.property === propertyName && a.componentClass === componentClass);
-	return match ? { dimension: match.dimension } : null;
+/** 检查属性是否在 whitelist 中 */
+function isAtmosphereProperty(propertyName: string, componentClass: string): boolean {
+	return ATMOSPHERE_WHITELIST.some((a) => a.property === propertyName && a.componentClass === componentClass);
 }
 
 // ── 主入口 ──
@@ -192,10 +189,9 @@ export async function executeMapAtmosphere(): Promise<AgentToolResult> {
 				continue;
 			}
 			const _propNames = Object.keys(compProps);
-			// Step 4: 标注属性
+			// Step 4: 标注属性（通过 whitelist 检查）
 			for (const propName of Object.keys(compProps)) {
-				const annotation = annotateProperty(propName, compClass);
-				if (!annotation) continue;
+				if (!isAtmosphereProperty(propName, compClass)) continue;
 
 				// 获取当前值
 				let currentValue: unknown;
@@ -220,28 +216,11 @@ export async function executeMapAtmosphere(): Promise<AgentToolResult> {
 					property: propName,
 					refPath: `${resolvedRefPath}.${propName}`,
 					currentValue,
-					note:
-						annotation.dimension === "light_direction" && propName === "RelativeRotation"
-							? "决定光源方向和它在画面中的位置，影响量化指标(亮度分布)"
-							: undefined,
 				});
 			}
 		}
 
 		if (components.length > 0) {
-			const dims = [
-				...new Set(
-					components
-						.map((c) => {
-							const a = ATMOSPHERE_WHITELIST.find(
-								(w) => w.property === c.property && w.componentClass === cfg.compClass,
-							);
-							return a?.dimension;
-						})
-						.filter(Boolean),
-				),
-			] as string[];
-
 			const rationales: Record<string, string> = {
 				CORE_LIGHTING: "直射光和天光决定场景所有物体的受光方向和色温基调",
 				ATMOSPHERE: "大气雾/体积云依赖Tier1的光方向和色温",
@@ -252,7 +231,6 @@ export async function executeMapAtmosphere(): Promise<AgentToolResult> {
 				tier: cfg.tier,
 				label: cfg.label,
 				rationale: rationales[cfg.label] || "",
-				dimensions: dims,
 				components,
 			});
 		}
@@ -267,22 +245,6 @@ export async function executeMapAtmosphere(): Promise<AgentToolResult> {
 	return {
 		content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
 	};
-}
-
-function _componentKeyToClass(key: string, actorClass: string): string {
-	// key 如 "directionalLightComponent", "LightComponent" → class name
-	const map: Record<string, Record<string, string>> = {
-		DirectionalLight: {
-			directionalLightComponent: "DirectionalLightComponent",
-			LightComponent: "DirectionalLightComponent",
-		},
-		SkyLight: { skyLightComponent: "SkyLightComponent", LightComponent: "SkyLightComponent" },
-		SkyAtmosphere: { skyAtmosphereComponent: "SkyAtmosphereComponent" },
-		ExponentialHeightFog: { exponentialHeightFogComponent: "ExponentialHeightFogComponent" },
-		VolumetricCloud: { volumetricCloudComponent: "VolumetricCloudComponent" },
-		PostProcessVolume: { postProcessVolumeComponent: "PostProcessVolume" },
-	};
-	return map[actorClass]?.[key] || key;
 }
 
 function errResult(msg: string): AgentToolResult {

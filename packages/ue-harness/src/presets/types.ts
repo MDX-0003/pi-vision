@@ -2,7 +2,7 @@
  * Issue 008a — 预设系统类型定义
  */
 
-import type { PresetTags } from "../vision/analyzer.ts";
+// PresetTags removed in Issue 010a — tags are now a flat string[]
 
 /** 单个 actor 的属性快照 */
 export interface PresetActor {
@@ -18,8 +18,7 @@ export interface PresetActor {
 export interface PresetEntry {
 	name: string;
 	description: string; // Vision 自动生成的自然语言描述
-	tags: PresetTags; // 受控标签（5 维度，用于匹配）
-	freeformTags: string[]; // 自由标签（加分项）
+	tags: string[]; // 开放式标签（0-5 个），用于匹配
 	screenshot: string; // 截图文件名（相对预设目录）
 	actors: Record<string, PresetActor>;
 	postprocessReset: boolean;
@@ -30,6 +29,6 @@ export interface PresetEntry {
 export interface PresetMatch {
 	name: string;
 	description: string;
-	score: number; // 0-1
-	matchedDimensions: string[]; // 具体哪些受控标签匹配
+	score: number; // 0-1, Jaccard
+	matchedTags: string[]; // 重叠的标签
 }

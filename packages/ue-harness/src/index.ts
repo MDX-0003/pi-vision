@@ -26,7 +26,7 @@ import {
 import { UeClient } from "./ue-client/mcp-client.ts";
 import { convertTool } from "./ue-client/schema-converter.ts";
 import type { UeHarnessConfig } from "./ue-client/types.ts";
-import { loadCustomVocabulary } from "./vision/analyzer.ts";
+
 import { VisionClient } from "./vision/vision-client.ts";
 import { loadAllPresets } from "./presets/store.ts";
 import { matchPresetsByTags } from "./presets/match.ts";
@@ -264,8 +264,6 @@ export default function ueHarnessExtension(pi: ExtensionAPI): void {
 				}
 			}
 
-			// Issue 008a: 加载自定义词汇表
-			loadCustomVocabulary();
 			// 注册自研工具 (assess_lighting, map_atmosphere, preset tools)
 			registerSelfTools(pi);
 
@@ -351,7 +349,6 @@ export default function ueHarnessExtension(pi: ExtensionAPI): void {
 			if (presets.length > 0) {
 				const matches = matchPresetsByTags(
 					_phaseState.lastTagResult.tags,
-					_phaseState.lastTagResult.freeformTags,
 					presets,
 				);
 				if (matches.length > 0) {

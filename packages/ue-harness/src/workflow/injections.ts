@@ -317,9 +317,8 @@ export function buildPresetSuggestion(matches: PresetMatch[]): string {
 
 	for (let i = 0; i < matches.length; i++) {
 		const m = matches[i];
-		text += `  [${i + 1}] ${m.name} (标签匹配: ${m.matchedDimensions.length}/5, 得分 ${m.score})\n`;
+		text += `  [${i + 1}] ${m.name} (匹配标签: ${m.matchedTags.join(", ")}, 得分 ${m.score})\n`;
 		text += `      ${m.description}\n`;
-		text += `      匹配维度: ${m.matchedDimensions.join(", ")}\n`;
 	}
 
 	text += `
@@ -327,8 +326,6 @@ export function buildPresetSuggestion(matches: PresetMatch[]): string {
   调 load_preset('name') 批量应用该预设 → 调 assess_lighting() 检验效果
 
 不使用预设则忽略此建议，继续手动调参。
-
-(unspecified = 该维度在此预设或参考图中无法归类，已自动忽略不计分)
 `;
 	return text;
 }

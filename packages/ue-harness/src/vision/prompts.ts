@@ -102,100 +102,25 @@ __QUANTITATIVE_REPORT__
    对于数值差距最大的 aspect，如果没有明显的视觉差异，应标记 close_enough。`;
 
 // ═══════════════════════════════════════════
-// Issue 008a — 动态标签分析 Prompt (保持不变)
+// Issue 010a — 简化标签分析 Prompt (开放式标签，无受控维度)
 // ═══════════════════════════════════════════
 
-import { CONTROLLED_DIMENSIONS, getEffectiveVocabulary, type ControlledTagDimension } from "./analyzer.ts";
-
-/** 基础标签值的中文描述映射（仅基础值有描述，自定义值只列出英文名） */
-const TAG_DESCRIPTIONS: Record<ControlledTagDimension, Array<{ value: string; desc: string }>> = {
-	time_of_day: [
-		{ value: "golden_hour", desc: "温暖的倾斜低角度日光，长阴影，橙/金色调" },
-		{ value: "midday", desc: "明亮的顶光，短阴影，中性白光" },
-		{ value: "dusk", desc: "黄昏，太阳低于地平线但天空仍有色彩，紫/粉色调" },
-		{ value: "night", desc: "夜晚场景，月光或人造光源照明" },
-		{ value: "dawn", desc: "清晨，冷调淡色，太阳接近地平线" },
-		{ value: "overcast", desc: "阴天漫射光，无明确太阳方向，灰调天空感" },
-		{ value: "unspecified", desc: "以上皆不符合" },
-	],
-	color_palette: [
-		{ value: "warm", desc: "全局暖调（橙/金色）" },
-		{ value: "cool", desc: "全局冷调（蓝/白）" },
-		{ value: "neutral", desc: "自然中性色调" },
-		{ value: "warm_cool_contrast", desc: "画面不同区域有明显色温差异（暖高光 + 冷阴影）" },
-		{ value: "unspecified", desc: "以上皆不符合" },
-	],
-	atmosphere: [
-		{ value: "clear", desc: "完全清晰，无任何大气效果" },
-		{ value: "light_fog", desc: "轻微雾气，远处稍有衰减" },
-		{ value: "heavy_fog", desc: "浓雾，近处也可见明显雾效" },
-		{ value: "mist", desc: "薄雾，地面附近有轻纱感" },
-		{ value: "haze", desc: "霾，远距离衰减但无体积感" },
-		{ value: "storm", desc: "暴风雨/沙尘暴，极端天气效果" },
-		{ value: "unspecified", desc: "以上皆不符合" },
-	],
-	light_direction: [
-		{ value: "front", desc: "主光从相机方向来（顺光）" },
-		{ value: "side", desc: "主光从侧面来（侧光）" },
-		{ value: "back", desc: "主光从被摄体后方来（逆光）" },
-		{ value: "top", desc: "主光从正上方来（顶光）" },
-		{ value: "ambient", desc: "无明显方向，全方向漫射" },
-		{ value: "low_angle", desc: "主光以低角度射入（斜射）" },
-		{ value: "unspecified", desc: "以上皆不符合" },
-	],
-	mood: [
-		{ value: "bright", desc: "明亮愉快" },
-		{ value: "dark", desc: "黑暗沉重" },
-		{ value: "moody", desc: "氛围感强，情绪化" },
-		{ value: "vibrant", desc: "鲜艳活泼" },
-		{ value: "muted", desc: "柔和低沉" },
-		{ value: "dramatic", desc: "戏剧化，强对比" },
-		{ value: "unspecified", desc: "以上皆不符合" },
-	],
-};
-
-/** 动态生成标签分析 prompt，自动纳入最新的有效词汇表 */
+/** 生成开放式标签分析 prompt */
 export function buildTaggingPrompt(): string {
-	let prompt = `你是一个游戏光照分析助手。
+	return `你是一个游戏光照分析助手。
 
 分析这张图片的光照氛围，返回结构化标签。
 
-对以下 5 个维度，每个维度从列出的选项中选择最匹配的一个值。
-如果所有选项都不符合图片特征，选择 "unspecified"。
-你必须从列出的选项中选择——不要创造新值。
-
-维度:
-`;
-
-	for (const dim of CONTROLLED_DIMENSIONS) {
-		const values = getEffectiveVocabulary(dim);
-		const descMap = TAG_DESCRIPTIONS[dim];
-		prompt += `  ${dim}: [${values.join(", ")}]\n`;
-		for (const entry of descMap) {
-			if (values.includes(entry.value)) {
-				prompt += `    - ${entry.value.padEnd(20)} — ${entry.desc}\n`;
-			}
-		}
-		// 自定义值（无中文描述）
-		const customValues = values.filter((v) => !descMap.find((d) => d.value === v));
-		for (const cv of customValues) {
-			prompt += `    - ${cv.padEnd(20)} — (用户自定义标签)\n`;
-		}
-		prompt += "\n";
-	}
-
-	prompt += `此外:
-  - description: 1-3 句自然语言描述该图的光照氛围
-  - freeformTags: 0-5 个上述维度未覆盖的场景特征词
-    (如 "ocean_horizon", "mountain_silhouette", "indoor", "god_rays")
-
-返回纯 JSON（无 markdown 代码块）:
-
+输出 JSON:
 {
-  "description": "Warm golden hour sunlight over ocean horizon...",
-  "tags": { "time_of_day": "golden_hour", "color_palette": "warm" },
-  "freeformTags": ["ocean_horizon", "god_rays"]
-}`;
+  "description": "1-2 句中文描述该图的光照氛围特征",
+  "tags": ["golden_hour", "ocean_horizon", "god_rays"]
+}
 
-	return prompt;
+规则:
+- description: 1-2 句中文，描述整体光照氛围
+- tags: 0-5 个标签，用于与预设库匹配。标签应描述氛围特征（色温、时段、方向、情绪、场景元素等）
+- 标签可以是中文或英文，优先英文常用术语
+
+返回纯 JSON（无 markdown 代码块）。`;
 }

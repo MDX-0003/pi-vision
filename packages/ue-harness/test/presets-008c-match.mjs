@@ -1,5 +1,5 @@
 /**
- * Issue 008c — matchPresetsByTags() + buildPresetSuggestion() 测试
+ * Issue 010a — matchPresetsByTags() + buildPresetSuggestion() 测试（简化版：Jaccard）
  *
  * 运行: node test/presets-008c-match.mjs
  */
@@ -20,37 +20,37 @@ function check(name, condition, detail = "") {
 }
 
 // ═══════════════════════════════════════════
-// inline copy of matchPresetsByTags
+// inline copy of matchPresetsByTags (Issue 010a)
 // ═══════════════════════════════════════════
 
-const CONTROLLED_DIMENSIONS = ["time_of_day", "color_palette", "atmosphere", "light_direction", "mood"];
+function jaccardTagScore(queryTags, presetTags) {
+	const intersection = queryTags.filter((t) => presetTags.includes(t)).length;
+	const union = new Set([...queryTags, ...presetTags]).size;
+	return union > 0 ? intersection / union : 0;
+}
 
-function matchPresetsByTags(queryTags, queryFreeform, presets) {
+function matchPresetsByTags(queryTags, presets, options) {
+	const scorer = options?.scorer ?? jaccardTagScore;
+	const topN = options?.topN ?? 10;
+
 	const results = [];
 	for (const preset of presets) {
-		let hits = 0, comparable = 0;
-		const matchedDims = [];
-		for (const dim of CONTROLLED_DIMENSIONS) {
-			const q = queryTags[dim], p = preset.tags[dim];
-			if (q === "unspecified" || p === "unspecified") continue;
-			comparable++;
-			if (q === p) { hits++; matchedDims.push(dim); }
-		}
-		if (comparable < 2) continue;
-		const controlledScore = hits / comparable;
-		const intersection = queryFreeform.filter((t) => preset.freeformTags.includes(t)).length;
-		const union = new Set([...queryFreeform, ...preset.freeformTags]).size;
-		const freeformScore = union > 0 ? intersection / union : 0;
-		const score = controlledScore * 0.85 + freeformScore * 0.15;
-		if (score >= 0.5 && hits >= 2) {
-			results.push({ name: preset.name, description: preset.description, score: Math.round(score * 100) / 100, matchedDimensions: matchedDims });
+		const score = scorer(queryTags, preset.tags);
+		if (score > 0) {
+			results.push({
+				name: preset.name,
+				description: preset.description,
+				score: Math.round(score * 100) / 100,
+				matchedTags: queryTags.filter((t) => preset.tags.includes(t)),
+			});
 		}
 	}
-	return results.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name)).slice(0, 3);
+
+	return results.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name)).slice(0, topN);
 }
 
 // ═══════════════════════════════════════════
-// inline copy of buildPresetSuggestion
+// inline copy of buildPresetSuggestion (Issue 010a)
 // ═══════════════════════════════════════════
 
 function buildPresetSuggestion(matches) {
@@ -59,28 +59,37 @@ function buildPresetSuggestion(matches) {
 	text += "以下预设与当前参考图的氛围特征相似，可提供更好的调参起点:\n";
 	for (let i = 0; i < matches.length; i++) {
 		const m = matches[i];
-		text += `  [${i + 1}] ${m.name} (标签匹配: ${m.matchedDimensions.length}/5, 得分 ${m.score})\n`;
+		text += `  [${i + 1}] ${m.name} (匹配标签: ${m.matchedTags.join(", ")}, 得分 ${m.score})\n`;
 		text += `      ${m.description}\n`;
-		text += `      匹配维度: ${m.matchedDimensions.join(", ")}\n`;
 	}
 	text += "\n如果你认为某个预设比当前默认场景更适合作为起点:\n";
 	text += "  调 load_preset('name') 批量应用该预设 → 调 assess_lighting() 检验效果\n";
 	text += "\n不使用预设则忽略此建议，继续手动调参。\n";
-	text += "\n(unspecified = 该维度在此预设或参考图中无法归类，已自动忽略不计分)\n";
 	return text;
 }
 
 // ═══════════════════════════════════════════
-// Helper: make tags
+// Helper
 // ═══════════════════════════════════════════
 
-function makeTags(timeOfDay, colorPalette, atmosphere, lightDirection, mood) {
-	return { time_of_day: timeOfDay, color_palette: colorPalette, atmosphere, light_direction: lightDirection, mood };
+function makePreset(name, tags, description) {
+	return { name, description: description || `Preset ${name}`, tags: tags || [] };
 }
 
-function makePreset(name, tags, freeformTags, description) {
-	return { name, description: description || `Preset ${name}`, tags, freeformTags: freeformTags || [] };
-}
+// ═══════════════════════════════════════════
+// Tests — jaccardTagScore
+// ═══════════════════════════════════════════
+
+console.log("\n── jaccardTagScore() ──\n");
+
+(() => {
+	check("identical → 1.0", jaccardTagScore(["a", "b"], ["a", "b"]) === 1.0);
+	check("half overlap → 0.33", jaccardTagScore(["a", "b"], ["a", "c"]).toFixed(2) === "0.33", `${jaccardTagScore(["a", "b"], ["a", "c"])}`);
+	check("no overlap → 0", jaccardTagScore(["a"], ["b"]) === 0);
+	check("both empty → 0", jaccardTagScore([], []) === 0);
+	check("query empty → 0", jaccardTagScore([], ["a"]) === 0);
+	check("preset empty → 0", jaccardTagScore(["a"], []) === 0);
+})();
 
 // ═══════════════════════════════════════════
 // Tests — matchPresetsByTags
@@ -88,101 +97,99 @@ function makePreset(name, tags, freeformTags, description) {
 
 console.log("\n── matchPresetsByTags() ──\n");
 
-// Case 1: 完美匹配（5/5）
+// Case 1: 完全匹配 → 返回唯一结果
 (() => {
-	const query = makeTags("golden_hour", "warm", "heavy_fog", "low_angle", "dramatic");
-	const preset = makePreset("test", makeTags("golden_hour", "warm", "heavy_fog", "low_angle", "dramatic"));
-	const results = matchPresetsByTags(query, [], [preset]);
-	check("5/5 match → score = 0.85", results.length === 1 && results[0].score === 0.85, `score=${results[0]?.score}`);
-	check("5/5 match → 5 matched dims", results[0]?.matchedDimensions.length === 5);
+	const preset = makePreset("perfect", ["golden_hour", "warm", "ocean"]);
+	const results = matchPresetsByTags(["golden_hour", "warm", "ocean"], [preset]);
+	check("full match → score=1.0", results.length === 1 && results[0].score === 1.0);
+	check("full match → all tags matched", results[0].matchedTags.length === 3);
 })();
 
-// Case 2: 3/5 匹配
+// Case 2: 部分匹配
 (() => {
-	const query = makeTags("golden_hour", "warm", "clear", "top", "dramatic");
-	const preset = makePreset("test", makeTags("golden_hour", "warm", "heavy_fog", "low_angle", "dramatic"));
-	const results = matchPresetsByTags(query, [], [preset]);
-	check("3/5 match → score >= 0.5", results.length === 1 && results[0].score >= 0.5, `score=${results[0]?.score}`);
-	check("3/5 match → 3 matched dims", results[0]?.matchedDimensions.length === 3);
+	const preset = makePreset("partial", ["golden_hour", "warm", "ocean"]);
+	const results = matchPresetsByTags(["golden_hour", "cool", "ocean"], [preset]);
+	check("2/3 match → score=0.5", results.length === 1 && results[0].score === 0.5, `score=${results[0]?.score}`);
+	check("2/3 match → 2 matched tags", results[0].matchedTags.length === 2);
 })();
 
-// Case 3: 双方各有 unspecified → 只比较重叠的非 unspecified 维度
+// Case 3: 零匹配 → 不返回
 (() => {
-	const query = makeTags("golden_hour", "unspecified", "heavy_fog", "low_angle", "dramatic");
-	const preset = makePreset("test", makeTags("golden_hour", "warm", "unspecified", "low_angle", "bright"));
-	const results = matchPresetsByTags(query, [], [preset]);
-	// comparable: time_of_day, light_direction, mood = 3
-	// hits: time_of_day, light_direction = 2
-	check("mixed unspecified → hits=2", results.length === 1 && results[0].matchedDimensions.length === 2);
-	check("mixed unspecified → score ≈ 0.57", results.length === 1 && results[0].score >= 0.5, `score=${results[0]?.score}`);
+	const preset = makePreset("none", ["golden_hour", "warm"]);
+	const results = matchPresetsByTags(["cool", "night"], [preset]);
+	check("zero overlap → no result", results.length === 0);
 })();
 
-// Case 4: comparable < 2 → 不匹配
+// Case 4: 单个 tag 匹配
 (() => {
-	const query = makeTags("golden_hour", "unspecified", "unspecified", "unspecified", "unspecified");
-	const preset = makePreset("test", makeTags("dusk", "unspecified", "unspecified", "unspecified", "unspecified"));
-	const results = matchPresetsByTags(query, [], [preset]);
-	check("comparable=1 → no match", results.length === 0);
+	const preset = makePreset("single", ["golden_hour", "ocean", "warm"]);
+	const results = matchPresetsByTags(["golden_hour", "cool", "night"], [preset]);
+	check("1 tag match → score > 0", results.length === 1 && results[0].score > 0, `score=${results[0]?.score}`);
+	check("1 tag match → matchedTags=['golden_hour']", results[0].matchedTags.length === 1 && results[0].matchedTags[0] === "golden_hour");
 })();
 
-// Case 5: 全 unspecified → 不匹配
+// Case 5: 空查询标签 → 无匹配
 (() => {
-	const query = makeTags("unspecified", "unspecified", "unspecified", "unspecified", "unspecified");
-	const preset = makePreset("test", makeTags("unspecified", "unspecified", "unspecified", "unspecified", "unspecified"));
-	const results = matchPresetsByTags(query, [], [preset]);
-	check("all unspecified → no match", results.length === 0);
+	const preset = makePreset("test", ["a", "b"]);
+	const results = matchPresetsByTags([], [preset]);
+	check("empty query → no result", results.length === 0);
 })();
 
-// Case 6: 自由标签 Jaccard 加分
-(() => {
-	const query = makeTags("golden_hour", "warm", "clear", "front", "bright");
-	const preset = makePreset("test", makeTags("golden_hour", "warm", "clear", "front", "bright"), ["ocean", "silhouette"]);
-	const resultsNoFree = matchPresetsByTags(query, [], [preset]);
-	const resultsFree = matchPresetsByTags(query, ["ocean", "god_rays"], [preset]);
-	// freeform intersection=1 ("ocean"), union=3 ("ocean","god_rays","silhouette"), freeformScore=0.33, +0.05
-	check("freeform → score increases", resultsFree[0].score > resultsNoFree[0].score, `diff: ${(resultsFree[0].score - resultsNoFree[0].score).toFixed(2)}`);
-})();
-
-// Case 7: 空自由标签
-(() => {
-	const query = makeTags("golden_hour", "warm", "clear", "front", "bright");
-	const preset = makePreset("test", makeTags("golden_hour", "warm", "clear", "front", "bright"), ["ocean"]);
-	const results = matchPresetsByTags(query, [], [preset]);
-	check("empty freeform → no bonus", results.length === 1 && results[0].score === 0.85, `score=${results[0]?.score}`);
-})();
-
-// Case 8: top-3 排序
+// Case 6: top-10 排序
 (() => {
 	const presets = [
-		makePreset("low", makeTags("golden_hour", "cool", "clear", "front", "muted")),
-		makePreset("high", makeTags("golden_hour", "warm", "heavy_fog", "low_angle", "dramatic")),
-		makePreset("mid", makeTags("golden_hour", "warm", "clear", "front", "dramatic")),
-		makePreset("superlow", makeTags("dusk", "cool", "storm", "top", "muted")),
+		makePreset("best", ["a", "b", "c", "d"]),
+		makePreset("good", ["a", "b", "c"]),
+		makePreset("ok", ["a", "b"]),
+		makePreset("meh", ["a"]),
+		makePreset("none", ["x"]),
 	];
-	const query = makeTags("golden_hour", "warm", "heavy_fog", "low_angle", "dramatic");
-	const results = matchPresetsByTags(query, [], presets);
-	check("top-3 → returns at most 3", results.length <= 3);
-	check("top-3 → best match first", results[0].name === "high", `got ${results[0]?.name}`);
+	const query = ["a", "b", "c", "d"];
+	const results = matchPresetsByTags(query, presets);
+	check("top-10 → returns up to 10", results.length <= 10);
+	check("top-10 → best first", results[0].name === "best", `got ${results[0]?.name}`);
+	check("top-10 → zero overlap excluded", results.length === 4, `got ${results.length}`);
+	check("top-10 → sorted by score desc", results[0].score >= results[1].score);
 })();
 
-// Case 9: hits < 2 → excluded even if score >= 0.5
-(() => {
-	const query = makeTags("golden_hour", "warm", "clear", "unspecified", "unspecified");
-	const preset = makePreset("test", makeTags("golden_hour", "cool", "unspecified", "unspecified", "unspecified"));
-	const results = matchPresetsByTags(query, [], [preset]);
-	// comparable=2 (time_of_day, color_palette), hits=1 (only time_of_day)
-	check("hits=1 comparable=2 → no match", results.length === 0);
-})();
-
-// Case 10: 分数相同的确定性排序
+// Case 7: score 相同 → 按名称字母序
 (() => {
 	const presets = [
-		makePreset("b-preset", makeTags("golden_hour", "warm", "clear", "front", "bright")),
-		makePreset("a-preset", makeTags("golden_hour", "warm", "clear", "front", "bright")),
+		makePreset("b-preset", ["golden_hour"]),
+		makePreset("a-preset", ["golden_hour"]),
 	];
-	const query = makeTags("golden_hour", "warm", "clear", "front", "bright");
-	const results = matchPresetsByTags(query, [], presets);
-	check("same score → alphabetically sorted", results[0].name === "a-preset", `got ${results[0]?.name}`);
+	const results = matchPresetsByTags(["golden_hour"], presets);
+	check("same score → alpha sort", results[0].name === "a-preset", `got ${results[0]?.name}`);
+})();
+
+// Case 8: 超过 topN 个结果 → 截断
+(() => {
+	const presets = [];
+	for (let i = 0; i < 15; i++) {
+		presets.push(makePreset(`p-${i}`, [`tag-${i % 3}`, "common"]));
+	}
+	const results = matchPresetsByTags(["common"], presets);
+	check("15 candidates → returns top-10", results.length === 10);
+})();
+
+// Case 9: 自定义 scorer（验证 options.scorer 接入）
+(() => {
+	const preset = makePreset("custom", ["a", "b"]);
+	const results = matchPresetsByTags(["a"], [preset], { scorer: () => 0.99, topN: 5 });
+	check("custom scorer → uses provided scorer", results.length === 1 && results[0].score === 0.99);
+})();
+
+// Case 10: 自定义 topN
+(() => {
+	const presets = [
+		makePreset("p1", ["common"]),
+		makePreset("p2", ["common"]),
+		makePreset("p3", ["common"]),
+		makePreset("p4", ["common"]),
+		makePreset("p5", ["common"]),
+	];
+	const results = matchPresetsByTags(["common"], presets, { topN: 3 });
+	check("custom topN=3 → returns 3", results.length === 3, `got ${results.length}`);
 })();
 
 // ═══════════════════════════════════════════
@@ -193,13 +200,13 @@ console.log("\n── buildPresetSuggestion() ──\n");
 
 (() => {
 	const text = buildPresetSuggestion([
-		{ name: "golden-hour", description: "Warm sunset scene", score: 0.92, matchedDimensions: ["time_of_day", "color_palette", "atmosphere", "light_direction"] },
+		{ name: "golden-hour", description: "Warm sunset scene", score: 0.92, matchedTags: ["golden_hour", "ocean", "god_rays"] },
 	]);
 	check("suggestion → contains preset name", text.includes("golden-hour"));
 	check("suggestion → contains score", text.includes("0.92"));
-	check("suggestion → contains matched count", text.includes("4/5"));
+	check("suggestion → contains matched tags", text.includes("golden_hour"));
 	check("suggestion → contains load_preset hint", text.includes("load_preset"));
-	check("suggestion → contains unspecified note", text.includes("unspecified"));
+	check("suggestion → NO unspecified note", !text.includes("unspecified"));
 })();
 
 (() => {
@@ -216,5 +223,5 @@ if (failed > 0) {
 	console.error(`${FAIL} ${failed} tests FAILED`);
 	process.exit(1);
 } else {
-	console.log(`${PASS} All 008c match tests passed!`);
+	console.log(`${PASS} All 010a match tests passed!`);
 }
