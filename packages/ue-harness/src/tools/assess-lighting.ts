@@ -16,7 +16,7 @@ import { captureViewport } from "../vision/capture.ts";
 import { computeMetrics, type QuantitativeReport } from "../vision/metrics.ts";
 import { ASSESS_LIGHTING_PROMPT } from "../vision/prompts.ts";
 import { analyzeAndTag, type TagResult } from "../vision/analyzer.ts";
-import type { UeClient } from "../ue-client/mcp-client.ts";
+import type { UeToolCaller } from "../ue-client/types.ts";
 
 // ── Types ──
 
@@ -113,13 +113,13 @@ function extractActorRefPaths(parsed: unknown): string[] {
  * 参考: E:/Programs/UE_Project_58/MCP/Test/ppv_test2.py
  *       E:/Programs/UE_Project_58/MCP/Test/test_ppv_direct.py
  */
-async function resetPostProcessToDefaults(ueClient: UeClient): Promise<void> {
+async function resetPostProcessToDefaults(caller: UeToolCaller): Promise<void> {
 	const GET_PROPS = "toolset_registry.toolsets.core.object.ObjectTools.get_properties";
 	const SET_PROPS = "toolset_registry.toolsets.core.object.ObjectTools.set_properties";
 	const FIND_ACTORS = "toolset_registry.toolsets.core.scene.SceneTools.find_actors";
 
 	// Step 1: 查找所有 PostProcessVolume actor
-	const findResult = await ueClient.callTool(FIND_ACTORS, { glob: "*PostProcessVolume*", tag: "" });
+	const findResult = await caller.callTool(FIND_ACTORS, { glob: "*PostProcessVolume*", tag: "" });
 	if (findResult.isError) {
 		console.log("[ue-harness] resetPostProcess: find_actors failed, skipping");
 		return;
@@ -136,7 +136,7 @@ async function resetPostProcessToDefaults(ueClient: UeClient): Promise<void> {
 
 	for (const refPath of actorRefPaths) {
 		// Step 2: 读取完整的 settings struct
-		const getResult = await ueClient.callTool(GET_PROPS, {
+		const getResult = await caller.callTool(GET_PROPS, {
 			instance: { refPath },
 			properties: ["settings"],
 		});
@@ -183,7 +183,7 @@ async function resetPostProcessToDefaults(ueClient: UeClient): Promise<void> {
 		modified["ColorGradingIntensity"] = 1;
 
 		// Step 4: 以 values JSON 字符串写回 (非 properties object!)
-		const setResult = await ueClient.callTool(SET_PROPS, {
+		const setResult = await caller.callTool(SET_PROPS, {
 			instance: { refPath },
 			values: JSON.stringify({ settings: modified }),
 		});

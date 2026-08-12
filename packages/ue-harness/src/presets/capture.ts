@@ -6,7 +6,7 @@
  * PostProcessVolume 不保存属性——仅在外层标记 postprocessReset。
  */
 
-import type { UeClient } from "../ue-client/mcp-client.ts";
+import type { UeToolCaller } from "../ue-client/types.ts";
 import { ATMOSPHERE_COMPONENT_GLOBS, ATMOSPHERE_WHITELIST, type PropertyAnnotation } from "../tools/atmosphere-whitelist.ts";
 import type { PresetActor } from "./types.ts";
 
@@ -46,12 +46,12 @@ function extractActorRefPaths(parsed: unknown): string[] {
 
 /** 获取组件 refPath (Actor → get_properties of component keys → component refPath) */
 async function resolveComponentRefPaths(
-	ueClient: UeClient,
+	caller: UeToolCaller,
 	actorRefPath: string,
 	componentKeys: string[],
 ): Promise<{ key: string; refPath: string }[]> {
 	const gpName = "toolset_registry.toolsets.core.object.ObjectTools.get_properties";
-	const result = await ueClient.callTool(gpName, {
+	const result = await caller.callTool(gpName, {
 		instance: { refPath: actorRefPath },
 		properties: componentKeys,
 	});
@@ -77,7 +77,7 @@ async function resolveComponentRefPaths(
  * 快照当前场景中 5 类氛围组件的属性。
  * PostProcessVolume 跳过（不存属性，仅标记 postprocessReset）。
  */
-export async function capturePresetState(ueClient: UeClient): Promise<CaptureResult> {
+export async function capturePresetState(caller: UeToolCaller): Promise<CaptureResult> {
 	const findActorsName = "toolset_registry.toolsets.core.scene.SceneTools.find_actors";
 	const listPropsName = "toolset_registry.toolsets.core.object.ObjectTools.list_properties";
 	const getPropsName = "toolset_registry.toolsets.core.object.ObjectTools.get_properties";
@@ -91,7 +91,7 @@ export async function capturePresetState(ueClient: UeClient): Promise<CaptureRes
 
 	for (const cfg of componentConfigs) {
 		// Step 1: find_actors
-		const faResult = await ueClient.callTool(findActorsName, { glob: cfg.glob, tag: "" });
+		const faResult = await caller.callTool(findActorsName, { glob: cfg.glob, tag: "" });
 		if (faResult.isError) continue;
 
 		const found = parseUeReturnValue(faResult.text);
@@ -112,14 +112,14 @@ export async function capturePresetState(ueClient: UeClient): Promise<CaptureRes
 				resolvedRefPath = actorRefPath;
 				compClass = cfg.compClass;
 			} else {
-				const compRefs = await resolveComponentRefPaths(ueClient, actorRefPath, cfg.compKeys);
+				const compRefs = await resolveComponentRefPaths(caller, actorRefPath, cfg.compKeys);
 				if (compRefs.length === 0) continue;
 				resolvedRefPath = compRefs[0].refPath;
 				compClass = cfg.compClass;
 			}
 
 			// Step 3: list_properties on the resolved path
-			const lpResult = await ueClient.callTool(listPropsName, {
+			const lpResult = await caller.callTool(listPropsName, {
 				instance: { refPath: resolvedRefPath },
 			});
 			if (lpResult.isError) continue;
@@ -137,7 +137,7 @@ export async function capturePresetState(ueClient: UeClient): Promise<CaptureRes
 
 			let propValues: Record<string, unknown>;
 			try {
-				const gvResult = await ueClient.callTool(getPropsName, {
+				const gvResult = await caller.callTool(getPropsName, {
 					instance: { refPath: resolvedRefPath },
 					properties: propNames,
 				});
@@ -151,7 +151,7 @@ export async function capturePresetState(ueClient: UeClient): Promise<CaptureRes
 			let transform: { rotation: { Pitch: number; Yaw: number; Roll: number } } | undefined;
 			if (cfg.actorClass === "DirectionalLight") {
 				try {
-					const gtResult = await ueClient.callTool(getTransformName, {
+					const gtResult = await caller.callTool(getTransformName, {
 						instance: { refPath: actorRefPath },
 					});
 					if (!gtResult.isError) {

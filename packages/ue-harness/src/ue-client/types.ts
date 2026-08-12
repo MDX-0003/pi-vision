@@ -68,6 +68,19 @@ export interface McpCallResult {
 	errorType?: "timeout" | "server_error" | "tool_not_found" | "validation_error" | "unknown";
 }
 
+/**
+ * 工具调用能力接口 (Issue 010c).
+ *
+ * 从 UeClient 中抽取的最小接口，只暴露 callTool。
+ * capturePresetState / resetPostProcessToDefaults / applyPreset / captureViewport
+ * 依赖此接口而非完整的 UeClient，使它们可被 mock 测试。
+ *
+ * UeClient 天然满足此接口（不需要修改）。
+ */
+export interface UeToolCaller {
+	callTool(name: string, params: Record<string, unknown>): Promise<McpCallResult>;
+}
+
 // ── 扩展配置类型 ──
 
 export interface UeHarnessConfig {

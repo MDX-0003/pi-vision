@@ -9,7 +9,7 @@
  */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { McpCallResult, UeHarnessConfig, UeToolDefinition } from "./types.ts";
+import type { McpCallResult, UeHarnessConfig, UeToolDefinition,UeToolCaller } from "./types.ts";
 
 // ── 工具集加载 ──
 
@@ -53,7 +53,7 @@ function classifyError(err: unknown): McpCallResult {
 
 // ── UeClient 类 ──
 
-export class UeClient {
+export class UeClient  implements UeToolCaller {
 	private client: Client | null = null;
 	private transport: StreamableHTTPClientTransport | null = null;
 	private config: UeHarnessConfig;

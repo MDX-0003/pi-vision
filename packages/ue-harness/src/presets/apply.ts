@@ -6,7 +6,7 @@
  * 第二阶段：各组件属性（set_properties）
  */
 
-import type { UeClient } from "../ue-client/mcp-client.ts";
+import type { UeToolCaller } from "../ue-client/types.ts";
 import type { PresetEntry } from "./types.ts";
 
 export interface ApplyResult {
@@ -19,7 +19,7 @@ export interface ApplyResult {
  * 将预设应用到当前 UE 场景。
  * 单线程顺序执行。
  */
-export async function applyPreset(ueClient: UeClient, entry: PresetEntry): Promise<ApplyResult> {
+export async function applyPreset(caller: UeToolCaller, entry: PresetEntry): Promise<ApplyResult> {
 	const setTransformName = "toolset_registry.toolsets.core.object.ObjectTools.set_actor_transform";
 	const setPropsName = "toolset_registry.toolsets.core.object.ObjectTools.set_properties";
 
@@ -30,7 +30,7 @@ export async function applyPreset(ueClient: UeClient, entry: PresetEntry): Promi
 		try {
 			// 第一阶段: DirectionalLight 旋转
 			if (actor.transform) {
-				const tResult = await ueClient.callTool(setTransformName, {
+				const tResult = await caller.callTool(setTransformName, {
 					instance: { refPath: actor.refPath },
 					transform: actor.transform,
 				});
@@ -45,7 +45,7 @@ export async function applyPreset(ueClient: UeClient, entry: PresetEntry): Promi
 				const propCount = Object.keys(props).length;
 				if (propCount === 0) continue;
 
-				const result = await ueClient.callTool(setPropsName, {
+				const result = await caller.callTool(setPropsName, {
 					instance: { refPath: actor.refPath },
 					properties: props,
 				});

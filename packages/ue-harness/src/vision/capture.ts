@@ -5,7 +5,7 @@
  * 返回文件路径 → fs.readFileSync → base64 → 供 Vision 调用。
  */
 import { existsSync, readFileSync } from "fs";
-import type { UeClient } from "../ue-client/mcp-client.ts";
+import type { UeToolCaller } from "../ue-client/types.ts";
 
 /** 截图结果 */
 export interface CaptureResult {
@@ -27,12 +27,12 @@ export interface CaptureResult {
  * @returns CaptureResult, 或 null (截图失败)
  */
 export async function captureViewport(
-	ueClient: UeClient,
+	caller: UeToolCaller,
 	resolutionMultiplier: number = 1.0,
 ): Promise<CaptureResult | null> {
 	const start = Date.now();
 
-	const result = await ueClient.callTool("ViewportCaptureToolset.ViewportCaptureToolset.CaptureViewportImage", {
+	const result = await caller.callTool("ViewportCaptureToolset.ViewportCaptureToolset.CaptureViewportImage", {
 		ResolutionMultiplier: resolutionMultiplier,
 	});
 

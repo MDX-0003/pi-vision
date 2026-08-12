@@ -371,5 +371,5 @@ export default function ueHarnessExtension(pi: ExtensionAPI): void {
 		return undefined;
 	});
 
-	console.log("[ue-harness] Extension loaded (Issue 009 — Serial Architecture + Quantitative Metrics)");
+	console.log("[ue-harness] Extension loaded");
 }
