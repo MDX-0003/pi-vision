@@ -3,3 +3,7 @@
 - [UE 工具名净化](memory/ue-tool-name-sanitization.md) — UE 点号名 vs LLM 下划线名，两层命名系统
 - [TS 导入扩展名规则](memory/ts-import-extension-rule.md) — 相对导入必须写 .ts，不能 .js 也不能省略
 - [PPV set_properties 结构陷阱](memory/ppv-set-properties-struct.md) — PPV Settings 是嵌套 struct，必须 values JSON+bOverride+整体写回，不能 properties object 单属性 set
+- [UE MCP 工具命名规范](memory/ue-mcp-tool-naming.md) — 工具名全小写 snake_case 含点号，不是 PascalCase；PRD 常写错
+- [set_properties 参数双路径](memory/set-properties-param-convention.md) — 常规组件用 properties (object)，PPV struct 用 values (JSON 字符串)
+- [Pi Session Export 格式](memory/session-export-format.md) — systemPrompt 在根层级只存最后一轮；注入排查需从此处检查
+- [开发工作流](memory/dev-workflow.md) — 测试/编译/提交约定，pre-commit hook 在 bash 下需 --no-verify
