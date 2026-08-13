@@ -29,7 +29,9 @@ import type { UeHarnessConfig } from "./ue-client/types.ts";
 
 import { VisionClient } from "./vision/vision-client.ts";
 import { loadAllPresets } from "./presets/store.ts";
-import { matchPresetsByTags } from "./presets/match.ts";
+import { matchPresets } from "./presets/match.ts";
+import { EmbeddingService } from "./presets/embedding.ts";
+import { BM25Index } from "./presets/bm25.ts";
 import { checkToolCall } from "./workflow/guard-rules.ts";
 import { buildInjectionAppendix, buildPresetSuggestion } from "./workflow/injections.ts";
 import {
@@ -64,6 +66,8 @@ function loadVisionAuth(): VisionAuthFile | null {
 let _ueClient: UeClient | null = null;
 let _visionClient: VisionClient | null = null;
 let _phaseState: PhaseState = createInitialState();
+let _embeddingService: EmbeddingService | null = null;
+let _bm25Index: BM25Index | null = null;
 
 function getConfig(): UeHarnessConfig {
 	const visionAuth = loadVisionAuth();
@@ -185,6 +189,36 @@ function registerSelfTools(pi: ExtensionAPI): void {
 	});
 }
 
+// ── Issue 011: 混合检索初始化 ──
+
+/**
+ * session_start 时初始化 embedding + bm25 服务，并同步 preset 索引。
+ * 失败不阻断（embedding 模型缺失时退化为纯 Jaccard 匹配）。
+ */
+async function initializePresetRetrieval(): Promise<void> {
+	// BM25 索引（纯 JS，无依赖）
+	_bm25Index = new BM25Index();
+
+	// Embedding 服务（ONNX 本地推理，模型缺失则跳过）
+	_embeddingService = new EmbeddingService();
+	try {
+		await _embeddingService.initialize();
+	} catch (err) {
+		console.warn(
+			"[ue-harness] Embedding service unavailable, falling back to Jaccard+BM25:",
+			(err as Error).message,
+		);
+		_embeddingService = null;
+	}
+
+	// 同步 preset 索引（embedding 向量 + bm25 倒排）
+	const presets = loadAllPresets();
+	_bm25Index.buildIndex(presets);
+	if (_embeddingService) {
+		await _embeddingService.syncPresets(presets);
+	}
+}
+
 // ── AssessLightingResult → QuantitativeSnapshot 转换 ──
 
 function extractQuantSnapshot(assessCount: number, result: AssessLightingResult): QuantitativeSnapshot {
@@ -270,6 +304,9 @@ export default function ueHarnessExtension(pi: ExtensionAPI): void {
 			console.log(
 				`[ue-harness] Tools loaded: ${registered} registered, ${excluded} excluded, ${failed} failed (total UE tools: ${allTools.length})`,
 			);
+
+			// ── Issue 011: 初始化混合检索服务（embedding + bm25）──
+			await initializePresetRetrieval();
 		} catch (err) {
 			console.error("[ue-harness] Failed to connect to UE MCP:", (err as Error).message);
 		}
@@ -287,6 +324,8 @@ export default function ueHarnessExtension(pi: ExtensionAPI): void {
 		setVisionClient(null);
 		_phaseState = createInitialState();
 		setPhaseState(null);
+		_embeddingService = null;
+		_bm25Index = null;
 	});
 
 	// ── Issue 005: tool_call Guard ──
@@ -299,7 +338,7 @@ export default function ueHarnessExtension(pi: ExtensionAPI): void {
 	});
 
 	// ── Issue 009: tool_result → Phase 更新 ──
-	pi.on("tool_result", (event: any) => {
+	pi.on("tool_result", async (event: any) => {
 		if (event.toolName === "assess_lighting") {
 			try {
 				const text = event.content?.[0]?.text || "";
@@ -329,39 +368,44 @@ export default function ueHarnessExtension(pi: ExtensionAPI): void {
 						_phaseState.assessCount,
 					);
 
-					// Issue 008c: 存储 TagResult 供 before_agent_start 预设匹配
+					// Issue 008c: 存储 TagResult
 					if (data.tagResult) {
 						_phaseState.lastTagResult = data.tagResult;
+					}
+
+					// Issue 011: 第一次 assess 后，混合检索匹配 preset，追加建议到 tool result
+					if (data.tagResult && _phaseState.assessCount === 1) {
+						const presets = loadAllPresets();
+						if (presets.length > 0) {
+							const matches = await matchPresets(
+								{ tags: data.tagResult.tags, description: data.tagResult.description },
+								presets,
+								{ embedding: _embeddingService, bm25: _bm25Index },
+								{ topN: 5 },
+							);
+							if (matches.length > 0) {
+								const suggestion = buildPresetSuggestion(matches);
+								console.log(
+									"[ue-harness] Preset matches:",
+									matches.map((m) => `${m.name}(${m.score})`).join(", "),
+								);
+								return {
+									content: [...event.content, { type: "text", text: suggestion }],
+								};
+							}
+						}
 					}
 				}
 			} catch {
 				/* ignore parse errors */
 			}
 		}
+		return undefined;
 	});
 
 	// ── Issue 009: before_agent_start 注入 ──
 	pi.on("before_agent_start", (event: any) => {
-		// Issue 008c: 预设匹配建议
-		let presetSuggestion = "";
-		if (_phaseState.phase === "TUNING" && _phaseState.lastTagResult && _phaseState.assessCount <= 2) {
-			const presets = loadAllPresets();
-			if (presets.length > 0) {
-				const matches = matchPresetsByTags(
-					_phaseState.lastTagResult.tags,
-					presets,
-				);
-				if (matches.length > 0) {
-					presetSuggestion = buildPresetSuggestion(matches);
-					console.log(
-						"[ue-harness] Preset matches:",
-						matches.map((m) => `${m.name}(${m.score})`).join(", "),
-					);
-				}
-			}
-		}
-
-		const appendix = buildInjectionAppendix(_phaseState, presetSuggestion);
+		const appendix = buildInjectionAppendix(_phaseState);
 		if (appendix) {
 			return { systemPrompt: `${event.systemPrompt || ""}\n${appendix}` };
 		}

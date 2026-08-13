@@ -276,11 +276,8 @@ export function buildQuantitativeTrendSummary(state: PhaseState): string {
 // 注入编排 (提供给 index.ts)
 // ═══════════════════════════════════════════
 
-export function buildInjectionAppendix(state: PhaseState, presetSuggestion?: string): string {
+export function buildInjectionAppendix(state: PhaseState): string {
 	const parts: string[] = [];
-
-	// 预设匹配建议 (008c)
-	if (presetSuggestion) parts.push(presetSuggestion);
 
 	// Phase context
 	const phaseCtx = buildPhaseContext(state);
@@ -312,12 +309,12 @@ import type { PresetMatch } from "../presets/types.ts";
 export function buildPresetSuggestion(matches: PresetMatch[]): string {
 	if (!matches || matches.length === 0) return "";
 
-	let text = "\n## 匹配的预设\n\n";
-	text += "以下预设与当前参考图的氛围特征相似，可提供更好的调参起点:\n";
+	let text = "\n## 匹配的预设（仅本次 assess 后提示一次）\n\n";
+	text += "以下预设与当前参考图氛围相似（综合标签、关键词、语义匹配），可提供调参起点:\n";
 
 	for (let i = 0; i < matches.length; i++) {
 		const m = matches[i];
-		text += `  [${i + 1}] ${m.name} (匹配标签: ${m.matchedTags.join(", ")}, 得分 ${m.score})\n`;
+		text += `  [${i + 1}] ${m.name} (得分 ${m.score})\n`;
 		text += `      ${m.description}\n`;
 	}
 

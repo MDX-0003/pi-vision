@@ -28,6 +28,23 @@ export interface PresetEntry {
 export interface PresetMatch {
 	name: string;
 	description: string;
-	score: number; // 0-1, Jaccard
-	matchedTags: string[]; // 重叠的标签
+	score: number; // RRF 融合分（越大越匹配）
 }
+
+// ═══════════════════════════════════════════
+// Issue 011 — 混合检索类型
+// ═══════════════════════════════════════════
+
+/** 参考图查询（来自 assess_lighting Stage1 的 analyzeAndTag） */
+export interface PresetQuery {
+	/** 开放式标签，0-5 个 */
+	tags: string[];
+	/** Vision 生成的描述（1-2 句） */
+	description: string;
+}
+
+/**
+ * 单个打分器。同步返回原始分数（范围不要求归一化，RRF 只关心排名）。
+ * 当前实现: Jaccard / BM25 / embedding cosine。
+ */
+export type PresetScorer = (query: PresetQuery, preset: PresetEntry) => number;
