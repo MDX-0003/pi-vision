@@ -65,9 +65,7 @@ __QUANTITATIVE_REPORT__
 3. tier 字段与根因判定:
 
    每个 tier 对应一组可调参数:
-   - Tier 1: DirectionalLight, SkyLight (lightColor, intensity, temperature, lightSourceAngle)
-   - Tier 2: SkyAtmosphere, ExponentialHeightFog, VolumetricCloud (散射、密度、高度等)
-   - Tier 3: PostProcessVolume (whiteTemp, colorSaturation, colorContrast, colorGamma, autoExposureBias 等)
+__TIER_LIST__
 
    __CURRENT_TIER_INFO__
 

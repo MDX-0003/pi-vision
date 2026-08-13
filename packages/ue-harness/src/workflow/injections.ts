@@ -9,6 +9,7 @@
 
 import type { QuantitativeSnapshot, PhaseState } from "./phase-machine.ts";
 import { TIER_MAX_ROUNDS } from "./phase-machine.ts";
+import { buildTunableLine, TIER_ORDER } from "./tiers.ts";
 import type { AnalysisEntry } from "../tools/assess-lighting.ts";
 
 // ── Phase 模板 ──
@@ -29,9 +30,7 @@ PostProcess 参数会在首次 assess_lighting 时自动重置到默认值。
 ## 当前阶段: TUNING (Tier ${s.tier})
 
 你正在调整 Tier ${s.tier} 的参数。
-${s.tier === 1 ? "只能调 DirectionalLight / SkyLight 的属性 (LightColor, intensity, temperature, lightSourceAngle)。" : ""}
-${s.tier === 2 ? "只能调 SkyAtmosphere / ExponentialHeightFog / VolumetricCloud 的属性。" : ""}
-${s.tier === 3 ? "可以调 PostProcessVolume 的属性 (whiteTemp, colorSaturation, colorContrast, colorGamma, autoExposureBias 等)。" : ""}
+${buildTunableLine(s.tier)}
 
 规则:
   - 可以批量修改参数，不需要每改一个就截图
@@ -88,7 +87,7 @@ export function buildAnalysisSummary(state: PhaseState): string {
 
 	let summary = "\n## 当前分析状态\n";
 
-	for (const tier of [1, 2, 3]) {
+	for (const tier of TIER_ORDER.map((t) => t.id)) {
 		const tierEntries = byTier.get(tier);
 		if (!tierEntries || tierEntries.length === 0) continue;
 
@@ -296,6 +295,11 @@ export function buildInjectionAppendix(state: PhaseState): string {
 	// Wind-down hint (tierRoundCount >= 10)
 	const windDown = buildWindDownHint(state);
 	if (windDown) parts.push(windDown);
+
+	// Issue 012: 停滞/回滚提示 (强制推进时)
+	if (state.lastStall?.stalled) {
+		parts.push(`\n--\n⚠️ ${state.lastStall.reason}\n`);
+	}
 
 	return parts.join("\n");
 }

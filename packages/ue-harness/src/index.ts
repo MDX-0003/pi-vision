@@ -6,7 +6,7 @@
  */
 
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { existsSync, readFileSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
@@ -37,9 +37,12 @@ import { buildInjectionAppendix, buildPresetSuggestion } from "./workflow/inject
 import {
 	createInitialState,
 	onAssessLighting,
+	recordWrite,
 	type PhaseState,
 	type QuantitativeSnapshot,
+	type RollbackWrite,
 } from "./workflow/phase-machine.ts";
+import { extractWriteTarget } from "./workflow/tiers.ts";
 
 // ── Vision auth 文件 ──
 
@@ -88,6 +91,120 @@ function getConfig(): UeHarnessConfig {
 	};
 }
 
+// ── Issue 012: 写前读 + 回滚 (停滞收敛) ──
+
+const SET_PROPS_KEYWORD = "set_properties";
+const GET_PROPS_TOOL = "toolset_registry.toolsets.core.object.ObjectTools.get_properties";
+const SET_PROPS_TOOL = "toolset_registry.toolsets.core.object.ObjectTools.set_properties";
+
+interface PreWriteEntry {
+	refPath: string;
+	prop: string;
+	from: unknown;
+	to: unknown;
+}
+
+/** 解析 UE 返回的 returnValue 包裹 (与 map-atmosphere.ts / assess-lighting.ts 相同逻辑) */
+function parseUeReturnValue(text: string): unknown {
+	try {
+		const outer = JSON.parse(text);
+		if (outer.returnValue !== undefined) {
+			const rv = outer.returnValue;
+			if (typeof rv === "string") {
+				try { return JSON.parse(rv); } catch { return rv; }
+			}
+			return rv;
+		}
+		return outer;
+	} catch {
+		return text;
+	}
+}
+
+/** 写前读当前值 (get_properties)，返回成功读取的 prop → 旧值 */
+async function readCurrentValues(refPath: string, propNames: string[]): Promise<Record<string, unknown>> {
+	const result: Record<string, unknown> = {};
+	if (!_ueClient?.isConnected || propNames.length === 0) return result;
+	try {
+		const r = await _ueClient.callToolWithRetry(GET_PROPS_TOOL, {
+			instance: { refPath },
+			properties: propNames,
+		});
+		if (!r.isError) {
+			const data = parseUeReturnValue(r.text);
+			if (data && typeof data === "object") {
+				for (const p of propNames) {
+					if (p in (data as Record<string, unknown>)) {
+						result[p] = (data as Record<string, unknown>)[p];
+					}
+				}
+			}
+		}
+	} catch { /* ignore */ }
+	return result;
+}
+
+/** set_properties 写前读：返回可记录的 from/to 条目 (读取失败的 prop 跳过) */
+async function capturePreWrite(params: Record<string, unknown>): Promise<PreWriteEntry[] | null> {
+	if (!_ueClient?.isConnected || !_phaseState) return null;
+	const target = extractWriteTarget(params);
+	if (!target) return null;
+	const propNames = Object.keys(target.props);
+	if (propNames.length === 0) return null;
+
+	const fromValues = await readCurrentValues(target.refPath, propNames);
+
+	const entries: PreWriteEntry[] = [];
+	for (const [prop, to] of Object.entries(target.props)) {
+		if (prop in fromValues) {
+			entries.push({ refPath: target.refPath, prop, from: fromValues[prop], to });
+		}
+	}
+	return entries.length > 0 ? entries : null;
+}
+
+/** 将回滚写应用到 UE (properties 对象形式，与 apply.ts 一致) */
+async function applyRollback(writes: RollbackWrite[]): Promise<string | null> {
+	if (!_ueClient?.isConnected) return null;
+	let applied = 0;
+	for (const w of writes) {
+		const r = await _ueClient.callToolWithRetry(SET_PROPS_TOOL, {
+			instance: { refPath: w.refPath },
+			properties: w.props,
+		});
+		if (!r.isError) applied++;
+	}
+	if (applied === 0) return null;
+	return `\n[ue-harness] 检测到停滞，已回滚 ${applied}/${writes.length} 个 actor 到历史最佳参数。`;
+}
+
+/** Issue 012: footer 状态栏显示的 tier 文本 */
+function buildTierStatus(state: PhaseState): string {
+	switch (state.phase) {
+		case "SETUP":
+			return "SETUP";
+		case "TUNING":
+			return `Tier ${state.tier} · 第 ${state.tierRoundCount} 轮`;
+		case "POSTPROCESS_SETUP":
+			return "POSTPROCESS_SETUP";
+		case "FINAL":
+			return "FINAL VERIFICATION";
+		case "DONE":
+			return "DONE";
+		default:
+			return "";
+	}
+}
+
+/** Issue 012: 更新 TUI footer 状态 + 停滞持久化提示面板 (强制推进时) */
+function updateTierUI(ctx: ExtensionContext, state: PhaseState): void {
+	if (!ctx.hasUI) return;
+	ctx.ui.setStatus("ue-harness-tier", buildTierStatus(state));
+	if (state.lastStall?.stalled) {
+		ctx.ui.setWidget("ue-harness-stall", [`⚠️ ${state.lastStall.reason}`], { placement: "aboveEditor" });
+	}
+}
+
 // ── UE 工具 execute() 封装 ──
 function createUeToolExecutor(toolName: string) {
 	return async (
@@ -107,7 +224,17 @@ function createUeToolExecutor(toolName: string) {
 			};
 		}
 
+		// Issue 012: set_properties 写前读 (记录 from 值, 供停滞回滚)
+		const journal = toolName.includes(SET_PROPS_KEYWORD) ? await capturePreWrite(params) : null;
+
 		const result = await _ueClient.callToolWithRetry(toolName, params);
+
+		// Issue 012: 写成功后记录变迁日志
+		if (journal && !result.isError) {
+			for (const e of journal) {
+				recordWrite(_phaseState, e.refPath, e.prop, e.from, e.to);
+			}
+		}
 
 		if (result.isError) {
 			const tag = result.errorType ? `[${result.errorType}] ` : "";
@@ -242,7 +369,7 @@ function extractQuantSnapshot(assessCount: number, result: AssessLightingResult)
 
 // ── 扩展入口 ──
 export default function ueHarnessExtension(pi: ExtensionAPI): void {
-	pi.on("session_start", async () => {
+	pi.on("session_start", async (_event, ctx) => {
 		const config = getConfig();
 
 		_ueClient = new UeClient(config);
@@ -251,6 +378,7 @@ export default function ueHarnessExtension(pi: ExtensionAPI): void {
 		setVisionClient(_visionClient);
 		_phaseState = createInitialState();
 		setPhaseState(_phaseState);
+		updateTierUI(ctx, _phaseState);
 
 		try {
 			await _ueClient.connect();
@@ -313,7 +441,7 @@ export default function ueHarnessExtension(pi: ExtensionAPI): void {
 	});
 
 	// ── Session Shutdown: 断开 ──
-	pi.on("session_shutdown", async () => {
+	pi.on("session_shutdown", async (_event, ctx) => {
 		if (_ueClient) {
 			await _ueClient.disconnect();
 			_ueClient = null;
@@ -326,6 +454,11 @@ export default function ueHarnessExtension(pi: ExtensionAPI): void {
 		setPhaseState(null);
 		_embeddingService = null;
 		_bm25Index = null;
+
+		if (ctx?.hasUI) {
+			ctx.ui.setStatus("ue-harness-tier", undefined);
+			ctx.ui.setWidget("ue-harness-stall", undefined);
+		}
 	});
 
 	// ── Issue 005: tool_call Guard ──
@@ -338,69 +471,83 @@ export default function ueHarnessExtension(pi: ExtensionAPI): void {
 	});
 
 	// ── Issue 009: tool_result → Phase 更新 ──
-	pi.on("tool_result", async (event: any) => {
-		if (event.toolName === "assess_lighting") {
-			try {
-				const text = event.content?.[0]?.text || "";
-				const data = JSON.parse(text) as AssessLightingResult;
+	pi.on("tool_result", async (event: any, ctx) => {
+		if (event.toolName !== "assess_lighting") return undefined;
 
-				if (data.success) {
-					const snapshot = extractQuantSnapshot(_phaseState.assessCount + 1, data);
-					onAssessLighting(
-						_phaseState,
-						data.analysis,
-						data.overall,
-						data.quantitative?.histogramCorrelation,
-						snapshot,
+		try {
+			const text = event.content?.[0]?.text || "";
+			const data = JSON.parse(text) as AssessLightingResult;
+			if (!data.success) return undefined;
+
+			const snapshot = extractQuantSnapshot(_phaseState.assessCount + 1, data);
+			onAssessLighting(
+				_phaseState,
+				data.analysis,
+				data.overall,
+				data.quantitative?.histogramCorrelation,
+				snapshot,
+			);
+
+			console.log(
+				"[ue-harness] Phase:",
+				_phaseState.phase,
+				"Tier:",
+				_phaseState.tier,
+				"Round:",
+				_phaseState.tierRoundCount,
+				"CE/NA:",
+				`${data.analysis.filter((a) => a.status === "close_enough").length}/` +
+					`${data.analysis.filter((a) => a.status === "needs_adjustment").length}`,
+				"Assess:",
+				_phaseState.assessCount,
+			);
+
+			updateTierUI(ctx, _phaseState);
+
+			const extraContent: Array<{ type: "text"; text: string }> = [];
+
+			// Issue 012: 停滞回滚 (onAssessLighting 可能设置了 pendingRollback)
+			if (_phaseState.pendingRollback && _phaseState.pendingRollback.length > 0) {
+				const rb = _phaseState.pendingRollback;
+				_phaseState.pendingRollback = null;
+				const note = await applyRollback(rb);
+				if (note) extraContent.push({ type: "text", text: note });
+			}
+
+			// Issue 008c: 存储 TagResult
+			if (data.tagResult) {
+				_phaseState.lastTagResult = data.tagResult;
+			}
+
+			// Issue 011: 第一次 assess 后，混合检索匹配 preset，追加建议到 tool result
+			if (data.tagResult && _phaseState.assessCount === 1) {
+				const presets = loadAllPresets();
+				if (presets.length > 0) {
+					const matches = await matchPresets(
+						{ tags: data.tagResult.tags, description: data.tagResult.description },
+						presets,
+						{ embedding: _embeddingService, bm25: _bm25Index },
+						{ topN: 5 },
 					);
-
-					console.log(
-						"[ue-harness] Phase:",
-						_phaseState.phase,
-						"Tier:",
-						_phaseState.tier,
-						"Round:",
-						_phaseState.tierRoundCount,
-						"CE/NA:",
-						`${data.analysis.filter((a) => a.status === "close_enough").length}/` +
-							`${data.analysis.filter((a) => a.status === "needs_adjustment").length}`,
-						"Assess:",
-						_phaseState.assessCount,
-					);
-
-					// Issue 008c: 存储 TagResult
-					if (data.tagResult) {
-						_phaseState.lastTagResult = data.tagResult;
-					}
-
-					// Issue 011: 第一次 assess 后，混合检索匹配 preset，追加建议到 tool result
-					if (data.tagResult && _phaseState.assessCount === 1) {
-						const presets = loadAllPresets();
-						if (presets.length > 0) {
-							const matches = await matchPresets(
-								{ tags: data.tagResult.tags, description: data.tagResult.description },
-								presets,
-								{ embedding: _embeddingService, bm25: _bm25Index },
-								{ topN: 5 },
-							);
-							if (matches.length > 0) {
-								const suggestion = buildPresetSuggestion(matches);
-								console.log(
-									"[ue-harness] Preset matches:",
-									matches.map((m) => `${m.name}(${m.score})`).join(", "),
-								);
-								return {
-									content: [...event.content, { type: "text", text: suggestion }],
-								};
-							}
-						}
+					if (matches.length > 0) {
+						const suggestion = buildPresetSuggestion(matches);
+						console.log(
+							"[ue-harness] Preset matches:",
+							matches.map((m) => `${m.name}(${m.score})`).join(", "),
+						);
+						extraContent.push({ type: "text", text: suggestion });
 					}
 				}
-			} catch {
-				/* ignore parse errors */
 			}
+
+			if (extraContent.length > 0) {
+				return { content: [...event.content, ...extraContent] };
+			}
+			return undefined;
+		} catch {
+			/* ignore parse errors */
+			return undefined;
 		}
-		return undefined;
 	});
 
 	// ── Issue 009: before_agent_start 注入 ──

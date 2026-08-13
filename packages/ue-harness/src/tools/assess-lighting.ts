@@ -17,6 +17,7 @@ import { computeMetrics, type QuantitativeReport } from "../vision/metrics.ts";
 import { ASSESS_LIGHTING_PROMPT } from "../vision/prompts.ts";
 import { analyzeAndTag, type TagResult } from "../vision/analyzer.ts";
 import type { UeToolCaller } from "../ue-client/types.ts";
+import { buildTierListDescription, getTierDef, TIER_ORDER } from "../workflow/tiers.ts";
 
 // ── Types ──
 
@@ -61,17 +62,15 @@ export interface AssessLightingResult {
 // ── __CURRENT_TIER_INFO__ 生成 ──
 
 function buildCurrentTierInfo(tier: number, tierRoundCount: number): string {
-	const paramMap: Record<number, string> = {
-		1: "当前调参阶段: Tier 1 (第 " + tierRoundCount + " 轮)\n" +
-			"可调参数: DirectionalLight.lightColor/intensity/temperature/lightSourceAngle, SkyLight.lightColor/intensity\n" +
-			"不可调: SkyAtmosphere, ExponentialHeightFog, VolumetricCloud, PostProcessVolume (这些属于更高 Tier)",
-		2: "当前调参阶段: Tier 2 (第 " + tierRoundCount + " 轮)\n" +
-			"可调参数: SkyAtmosphere, ExponentialHeightFog, VolumetricCloud (散射、密度、高度等)\n" +
-			"不可调: PostProcessVolume (属于 Tier 3)",
-		3: "当前调参阶段: Tier 3 (第 " + tierRoundCount + " 轮)\n" +
-			"可调参数: PostProcessVolume (whiteTemp, colorSaturation, colorContrast, colorGamma, autoExposureBias 等)",
-	};
-	return paramMap[tier] ?? paramMap[1];
+	const def = getTierDef(tier);
+	if (!def) return "";
+
+	const head = `当前调参阶段: Tier ${tier} (第 ${tierRoundCount} 轮)`;
+	const tunable = `可调参数: ${def.components} (${def.properties})`;
+	const higher = TIER_ORDER.filter((t) => t.id > tier).map((t) => t.components);
+	const untunable = higher.length > 0 ? `不可调: ${higher.join(", ")} (这些属于更高 Tier)` : "";
+
+	return [head, tunable, untunable].filter(Boolean).join("\n");
 }
 
 // ── SETUP PostProcess 重置 ──
@@ -273,7 +272,8 @@ export async function executeAssessLighting(
 		: buildCurrentTierInfo(1, 0);
 	const prompt = ASSESS_LIGHTING_PROMPT
 		.replace("__QUANTITATIVE_REPORT__", quantReportStr)
-		.replace("__CURRENT_TIER_INFO__", tierInfo);
+		.replace("__CURRENT_TIER_INFO__", tierInfo)
+		.replace("__TIER_LIST__", buildTierListDescription());
 
 	const visionRaw = await vision.sendAndParse<{
 		analysis: AnalysisEntry[];

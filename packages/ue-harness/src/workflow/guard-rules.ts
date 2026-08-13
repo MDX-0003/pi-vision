@@ -7,37 +7,10 @@
  */
 import type { PhaseState } from "./phase-machine.ts";
 import { checkLimits } from "./phase-machine.ts";
+import { resolveTier } from "./tiers.ts";
 
 // ── 工具 → Tier 映射 ──
-
-/** 工具名包含这些关键词 → 属于哪个 Tier */
-const TIER_KEYWORDS: Record<string, number> = {
-	DirectionalLight: 1,
-	SkyLight: 1,
-	LightColor: 1,
-	lightColor: 1,
-	intensity: 1,
-	lightSourceAngle: 1,
-	temperature: 1,
-	SkyAtmosphere: 2,
-	ExponentialHeightFog: 2,
-	VolumetricCloud: 2,
-	fogDensity: 2,
-	fogHeightFalloff: 2,
-	fogInscatteringColor: 2,
-	layerBottomAltitude: 2,
-	layerHeight: 2,
-	PostProcessVolume: 3,
-	whiteTemp: 3,
-	colorSaturation: 3,
-	colorContrast: 3,
-	colorGamma: 3,
-	filmSlope: 3,
-	filmToe: 3,
-	sceneFringeIntensity: 3,
-	colorGradingIntensity: 3,
-	autoExposureBias: 3,
-};
+// TIER_KEYWORDS / resolveTier 已迁移到 tiers.ts（数据驱动），此处直接用导入的 resolveTier。
 
 /** 截图工具名模式 */
 const SCREENSHOT_TOOLS = ["CaptureViewportImage", "CaptureEditorImage", "Screenshot"];
@@ -122,11 +95,6 @@ export function checkToolCall(
 	if (isWrite && state.phase === "TUNING") {
 		const targetTier = resolveTier(toolName, _args);
 
-		// 检查阻塞维度: 跨 Tier 之前必须先解决当前 tier 的 needs_adjustment
-		if (targetTier !== null && targetTier > 1 && state.blockingAspects.length > 0) {
-			// 只拦截跨 tier 的情况（当前 tier 的调整允许，即使有 needs_adjustment）
-		}
-
 		if (targetTier !== null && targetTier > state.tier) {
 			// 检查前置 tier 是否还有 blocking aspects
 			const unmet = state.lastAnalysis
@@ -145,35 +113,4 @@ export function checkToolCall(
 	}
 
 	return { block: false };
-}
-
-// ── Tier 解析 ──
-
-function resolveTier(toolName: string, args: Record<string, unknown>): number | null {
-	// 从工具名中推断
-	for (const [keyword, tier] of Object.entries(TIER_KEYWORDS)) {
-		if (toolName.includes(keyword)) return tier;
-	}
-	// 从参数中推断 (refPath 或 property name)
-	const refPath = typeof (args as Record<string, unknown>)?.instance === "object"
-		? ((args as Record<string, unknown>).instance as Record<string, unknown>)?.refPath
-		: undefined;
-	if (typeof refPath === "string") {
-		for (const [keyword, tier] of Object.entries(TIER_KEYWORDS)) {
-			if (refPath.includes(keyword)) return tier;
-		}
-	}
-	// 从 values/properties JSON 中推断
-	const values = (args as Record<string, unknown>)?.values ?? (args as Record<string, unknown>)?.properties;
-	if (typeof values === "string") {
-		for (const [keyword, tier] of Object.entries(TIER_KEYWORDS)) {
-			if (values.includes(keyword)) return tier;
-		}
-	} else if (typeof values === "object" && values !== null) {
-		const keys = Object.keys(values as Record<string, unknown>);
-		for (const [keyword, tier] of Object.entries(TIER_KEYWORDS)) {
-			if (keys.some((k) => k.includes(keyword))) return tier;
-		}
-	}
-	return null;
 }
