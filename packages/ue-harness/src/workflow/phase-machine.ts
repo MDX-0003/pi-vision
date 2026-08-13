@@ -59,7 +59,7 @@ export interface StallDetection {
 
 export interface PhaseState {
 	phase: Phase;
-	tier: number; // 1=CORE_LIGHTING, 2=ATMOSPHERE, 3=POSTPROCESS
+	tier: number; // 当前调参 tier（见 tiers.ts 的 TIER_ORDER）
 	assessCount: number;
 
 	/** 上一次 assess_lighting 的 Vision analysis */
@@ -284,6 +284,7 @@ function advanceTier(state: PhaseState): void {
 	const next = nextTier(state.tier);
 	if (next?.prePhase) {
 		state.phase = next.prePhase;
+		state.tier = next.id; // 记住 prePhase 对应的 tier，供 POSTPROCESS_SETUP 过渡用
 	} else if (next) {
 		state.tier = next.id;
 	} else {
@@ -369,8 +370,7 @@ export function onAssessLighting(
 		}
 
 		case "POSTPROCESS_SETUP":
-			state.phase = "TUNING";
-			state.tier = 3;
+			state.phase = "TUNING"; // tier 已由 advanceTier 设为 prePhase 对应 tier
 			resetTierProgress(state);
 			state.pendingRollback = null;
 			break;

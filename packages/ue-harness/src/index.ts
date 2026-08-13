@@ -42,7 +42,7 @@ import {
 	type QuantitativeSnapshot,
 	type RollbackWrite,
 } from "./workflow/phase-machine.ts";
-import { extractWriteTarget } from "./workflow/tiers.ts";
+import { extractRefPath, extractWriteTarget } from "./workflow/tiers.ts";
 
 // ── Vision auth 文件 ──
 
@@ -96,6 +96,9 @@ function getConfig(): UeHarnessConfig {
 const SET_PROPS_KEYWORD = "set_properties";
 const GET_PROPS_TOOL = "toolset_registry.toolsets.core.object.ObjectTools.get_properties";
 const SET_PROPS_TOOL = "toolset_registry.toolsets.core.object.ObjectTools.set_properties";
+const SET_TRANSFORM_KEYWORD = "set_actor_transform";
+const GET_TRANSFORM_TOOL = "toolset_registry.toolsets.core.actor.ActorTools.get_actor_transform";
+const SET_TRANSFORM_TOOL = "toolset_registry.toolsets.core.actor.ActorTools.set_actor_transform";
 
 interface PreWriteEntry {
 	refPath: string;
@@ -144,6 +147,18 @@ async function readCurrentValues(refPath: string, propNames: string[]): Promise<
 	return result;
 }
 
+/** 读当前 actor transform (get_actor_transform) */
+async function readCurrentTransform(refPath: string): Promise<unknown> {
+	if (!_ueClient?.isConnected) return undefined;
+	try {
+		const r = await _ueClient.callToolWithRetry(GET_TRANSFORM_TOOL, { actor: { refPath } });
+		if (r.isError) return undefined;
+		return parseUeReturnValue(r.text);
+	} catch {
+		return undefined;
+	}
+}
+
 /** set_properties 写前读：返回可记录的 from/to 条目 (读取失败的 prop 跳过) */
 async function capturePreWrite(params: Record<string, unknown>): Promise<PreWriteEntry[] | null> {
 	if (!_ueClient?.isConnected || !_phaseState) return null;
@@ -163,15 +178,29 @@ async function capturePreWrite(params: Record<string, unknown>): Promise<PreWrit
 	return entries.length > 0 ? entries : null;
 }
 
-/** 将回滚写应用到 UE (properties 对象形式，与 apply.ts 一致) */
+/** set_actor_transform 写前读：读当前 transform，记录 transform 的 from/to */
+async function captureTransformPreWrite(params: Record<string, unknown>): Promise<PreWriteEntry[] | null> {
+	if (!_ueClient?.isConnected || !_phaseState) return null;
+	const refPath = extractRefPath(params);
+	if (!refPath) return null;
+	const to = (params as Record<string, unknown>).transform;
+	if (to === undefined) return null;
+	const from = await readCurrentTransform(refPath);
+	if (from === undefined) return null;
+	return [{ refPath, prop: "transform", from, to }];
+}
+
+/** 将回滚写应用到 UE (transform 用 set_actor_transform，其余用 set_properties) */
 async function applyRollback(writes: RollbackWrite[]): Promise<string | null> {
 	if (!_ueClient?.isConnected) return null;
 	let applied = 0;
 	for (const w of writes) {
-		const r = await _ueClient.callToolWithRetry(SET_PROPS_TOOL, {
-			instance: { refPath: w.refPath },
-			properties: w.props,
-		});
+		const isTransform = "transform" in w.props;
+		const tool = isTransform ? SET_TRANSFORM_TOOL : SET_PROPS_TOOL;
+		const args = isTransform
+			? { actor: { refPath: w.refPath }, transform: w.props.transform }
+			: { instance: { refPath: w.refPath }, properties: w.props };
+		const r = await _ueClient.callToolWithRetry(tool, args);
 		if (!r.isError) applied++;
 	}
 	if (applied === 0) return null;
@@ -224,8 +253,12 @@ function createUeToolExecutor(toolName: string) {
 			};
 		}
 
-		// Issue 012: set_properties 写前读 (记录 from 值, 供停滞回滚)
-		const journal = toolName.includes(SET_PROPS_KEYWORD) ? await capturePreWrite(params) : null;
+		// Issue 012: 写前读 (记录 from 值, 供停滞回滚) — set_properties 或 set_actor_transform
+		const journal = toolName.includes(SET_PROPS_KEYWORD)
+			? await capturePreWrite(params)
+			: toolName.includes(SET_TRANSFORM_KEYWORD)
+				? await captureTransformPreWrite(params)
+				: null;
 
 		const result = await _ueClient.callToolWithRetry(toolName, params);
 

@@ -106,7 +106,7 @@ export const ATMOSPHERE_WHITELIST: PropertyAnnotation[] = [
 export const ATMOSPHERE_COMPONENT_GLOBS = [
 	{
 		glob: "*DirectionalLight*",
-		tier: 1,
+		tier: 2,
 		label: "CORE_LIGHTING",
 		actorClass: "DirectionalLight",
 		compKeys: ["directionalLightComponent"],
@@ -114,7 +114,7 @@ export const ATMOSPHERE_COMPONENT_GLOBS = [
 	},
 	{
 		glob: "*SkyLight*",
-		tier: 1,
+		tier: 2,
 		label: "CORE_LIGHTING",
 		actorClass: "SkyLight",
 		compKeys: ["lightComponent"],
@@ -122,7 +122,7 @@ export const ATMOSPHERE_COMPONENT_GLOBS = [
 	},
 	{
 		glob: "*SkyAtmosphere*",
-		tier: 2,
+		tier: 3,
 		label: "ATMOSPHERE",
 		actorClass: "SkyAtmosphere",
 		compKeys: ["skyAtmosphereComponent"],
@@ -130,7 +130,7 @@ export const ATMOSPHERE_COMPONENT_GLOBS = [
 	},
 	{
 		glob: "*ExponentialHeightFog*",
-		tier: 2,
+		tier: 3,
 		label: "ATMOSPHERE",
 		actorClass: "ExponentialHeightFog",
 		compKeys: ["component"],
@@ -138,7 +138,7 @@ export const ATMOSPHERE_COMPONENT_GLOBS = [
 	},
 	{
 		glob: "*VolumetricCloud*",
-		tier: 2,
+		tier: 3,
 		label: "ATMOSPHERE",
 		actorClass: "VolumetricCloud",
 		compKeys: ["volumetricCloudComponent"],
@@ -146,7 +146,7 @@ export const ATMOSPHERE_COMPONENT_GLOBS = [
 	},
 	{
 		glob: "*PostProcessVolume*",
-		tier: 3,
+		tier: 4,
 		label: "POSTPROCESS",
 		actorClass: "PostProcessVolume",
 		compKeys: [],

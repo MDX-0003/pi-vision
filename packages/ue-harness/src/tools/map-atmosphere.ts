@@ -12,6 +12,7 @@
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import { getUeClient } from "../state.ts";
+import type { UeToolCaller } from "../ue-client/types.ts";
 import { ATMOSPHERE_COMPONENT_GLOBS, ATMOSPHERE_WHITELIST } from "./atmosphere-whitelist.ts";
 
 // ── 类型 ──
@@ -122,10 +123,44 @@ export const mapAtmosphereDef = {
 		"输出每个维度的可调参数映射表，按 Tier 排列调参顺序。",
 	parameters: Type.Object({}),
 	promptSnippet: "map_atmosphere: 扫描场景氛围组件，输出维度→参数映射表",
-	promptGuidelines: ["调参前必须先调 map_atmosphere 了解可调参数", "按 Tier 顺序调整(Tier1→Tier2→Tier3)，不要跳级"],
+	promptGuidelines: ["调参前必须先调 map_atmosphere 了解可调参数", "按 Tier 顺序调整（从低到高），不要跳级"],
 };
 
-export async function executeMapAtmosphere(): Promise<AgentToolResult> {
+/** Issue 012: Tier 1 方向 — 读 DirectionalLight 的 transform (太阳方向) */
+async function scanDirection(client: UeToolCaller): Promise<TierEntry | null> {
+	const findActorsName = "toolset_registry.toolsets.core.scene.SceneTools.find_actors";
+	const getTransformName = "toolset_registry.toolsets.core.actor.ActorTools.get_actor_transform";
+
+	const faResult = await client.callTool(findActorsName, { glob: "*DirectionalLight*", tag: "" });
+	if (faResult.isError) return null;
+	const actorRefPaths = extractActorRefPaths(parseUeReturnValue(faResult.text));
+	if (actorRefPaths.length === 0) return null;
+
+	const components: ComponentEntry[] = [];
+	for (const actorRefPath of actorRefPaths) {
+		const gtResult = await client.callTool(getTransformName, { actor: { refPath: actorRefPath } });
+		if (gtResult.isError) continue;
+		const transform = parseUeReturnValue(gtResult.text);
+		const actorShort = actorRefPath.split(":").pop() || actorRefPath;
+		components.push({
+			actor: actorShort,
+			actorRefPath,
+			property: "transform",
+			refPath: actorRefPath,
+			currentValue: transform,
+		});
+	}
+
+	if (components.length === 0) return null;
+	return {
+		tier: 1,
+		label: "方向",
+		rationale: "直射光方向（太阳角度）决定整个画面的受光方向，是调光第一要务，应先于光源颜色/强度确定",
+		components,
+	};
+}
+
+export async function executeMapAtmosphere(): Promise<AgentToolResult<null>> {
 	const client = getUeClient();
 	if (!client?.isConnected) {
 		return errResult("UE MCP not connected");
@@ -137,6 +172,10 @@ export async function executeMapAtmosphere(): Promise<AgentToolResult> {
 
 	const tiers: TierEntry[] = [];
 	const missingComponents: string[] = [];
+
+	// Issue 012: Tier 1 方向（先于组件扫描，读太阳方向）
+	const directionTier = await scanDirection(client);
+	if (directionTier) tiers.push(directionTier);
 
 	for (const cfg of ATMOSPHERE_COMPONENT_GLOBS) {
 		// Step 1: find_actors
@@ -244,11 +283,13 @@ export async function executeMapAtmosphere(): Promise<AgentToolResult> {
 
 	return {
 		content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+		details: null,
 	};
 }
 
-function errResult(msg: string): AgentToolResult {
+function errResult(msg: string): AgentToolResult<null> {
 	return {
 		content: [{ type: "text", text: JSON.stringify({ success: false, error: msg }) }],
+		details: null,
 	};
 }

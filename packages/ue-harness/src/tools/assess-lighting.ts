@@ -67,8 +67,8 @@ function buildCurrentTierInfo(tier: number, tierRoundCount: number): string {
 
 	const head = `当前调参阶段: Tier ${tier} (第 ${tierRoundCount} 轮)`;
 	const tunable = `可调参数: ${def.components} (${def.properties})`;
-	const higher = TIER_ORDER.filter((t) => t.id > tier).map((t) => t.components);
-	const untunable = higher.length > 0 ? `不可调: ${higher.join(", ")} (这些属于更高 Tier)` : "";
+	const higher = TIER_ORDER.filter((t) => t.id > tier).map((t) => t.label);
+	const untunable = higher.length > 0 ? `不可调: ${higher.join("、")} (这些属于更高 Tier)` : "";
 
 	return [head, tunable, untunable].filter(Boolean).join("\n");
 }
@@ -220,7 +220,7 @@ export const assessLightingDef = {
 
 export async function executeAssessLighting(
 	params: { reference_path: string },
-): Promise<AgentToolResult> {
+): Promise<AgentToolResult<null>> {
 	const ueClient = getUeClient();
 	const vision = getVisionClient();
 	const state = getPhaseState();
@@ -303,12 +303,13 @@ export async function executeAssessLighting(
 
 	return {
 		content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+		details: null,
 	};
 }
 
-function errResult(msg: string): AgentToolResult {
+function errResult(msg: string): AgentToolResult<null> {
 	return {
 		content: [{ type: "text", text: JSON.stringify({ success: false, error: msg }) }],
-		isError: true,
+		details: null,
 	};
 }

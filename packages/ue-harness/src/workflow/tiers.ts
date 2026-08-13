@@ -26,6 +26,8 @@ export interface TierDef {
 	keywords: string[];
 	/** 进入本 tier 前先切到的 phase */
 	prePhase?: TierPrePhase;
+	/** 本 tier 是否通过 actor transform 调参（而非组件属性 set_properties） */
+	transformBased?: boolean;
 }
 
 // ── 数据 ──
@@ -33,6 +35,14 @@ export interface TierDef {
 export const TIER_ORDER: TierDef[] = [
 	{
 		id: 1,
+		label: "方向",
+		components: "DirectionalLight",
+		properties: "transform（太阳方向 pitch/yaw/roll）",
+		keywords: ["set_actor_transform", "get_actor_transform"],
+		transformBased: true,
+	},
+	{
+		id: 2,
 		label: "光源",
 		components: "DirectionalLight / SkyLight",
 		properties: "lightColor, intensity, temperature, lightSourceAngle",
@@ -47,7 +57,7 @@ export const TIER_ORDER: TierDef[] = [
 		],
 	},
 	{
-		id: 2,
+		id: 3,
 		label: "大气",
 		components: "SkyAtmosphere / ExponentialHeightFog / VolumetricCloud",
 		properties: "散射、密度、高度等",
@@ -63,7 +73,7 @@ export const TIER_ORDER: TierDef[] = [
 		],
 	},
 	{
-		id: 3,
+		id: 4,
 		label: "后期",
 		components: "PostProcessVolume",
 		properties: "whiteTemp, colorSaturation, colorContrast, colorGamma, autoExposureBias 等",
@@ -108,13 +118,21 @@ export function tierCount(): number {
 
 // ── 工具调用归类 ──
 
-/** 从工具参数提取 actor refPath（set_properties 用 instance.refPath；set_actor_transform 用 actor.refPath，step 2 扩展） */
+/** 从工具参数提取 actor refPath（set_properties 用 instance.refPath；set_actor_transform 用 actor.refPath） */
 export function extractRefPath(args: Record<string, unknown>): string | undefined {
+	// set_properties: instance.refPath
 	const instance = args.instance;
-	const refPath = typeof instance === "object" && instance !== null
+	const instancePath = typeof instance === "object" && instance !== null
 		? (instance as Record<string, unknown>).refPath
 		: undefined;
-	return typeof refPath === "string" ? refPath : undefined;
+	if (typeof instancePath === "string") return instancePath;
+
+	// set_actor_transform: actor.refPath
+	const actor = args.actor;
+	const actorPath = typeof actor === "object" && actor !== null
+		? (actor as Record<string, unknown>).refPath
+		: undefined;
+	return typeof actorPath === "string" ? actorPath : undefined;
 }
 
 /** 从工具参数提取写入目标 (refPath + 待写 props)。兼容 properties 对象 / values JSON 字符串两种形式。 */
@@ -179,10 +197,13 @@ export function resolveTier(toolName: string, args: Record<string, unknown>): nu
 
 // ── 渲染 ──
 
-/** TUNING 模板用的"只能调 X 的属性 (Y)"一行 */
+/** TUNING 模板用的"只能调 X 的 Y"一行 */
 export function buildTunableLine(id: number): string {
 	const def = getTierDef(id);
 	if (!def) return "";
+	if (def.transformBased) {
+		return `只能调 ${def.components} 的 ${def.properties}。`;
+	}
 	return `只能调 ${def.components} 的属性${def.properties ? ` (${def.properties})` : ""}。`;
 }
 

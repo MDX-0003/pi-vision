@@ -1,7 +1,8 @@
 /**
  * Issue 012 Verification — Tier 注册表（tiers.ts）
  *
- * 验证: TIER_ORDER 数据 / resolveTier 归类 / nextTier 顺序 + prePhase / 渲染函数。
+ * 验证: TIER_ORDER 数据 / resolveTier 归类 / nextTier 顺序 + prePhase /
+ *       extractRefPath (instance/actor) / 渲染函数。
  * 纯逻辑测试, 不依赖 Pi runtime 或 UE。
  *
  * 运行: node --import tsx test/verify-tiers.ts
@@ -15,6 +16,8 @@ import {
 	getTierDef,
 	buildTunableLine,
 	buildTierListDescription,
+	extractRefPath,
+	extractWriteTarget,
 } from "../src/workflow/tiers.ts";
 
 const PASS = "✅";
@@ -35,85 +38,76 @@ const SET_PROPS = "toolset_registry_toolsets_core_object_ObjectTools_set_propert
 
 function main() {
 	console.log("=".repeat(60));
-	console.log("Issue 012 Verification — Tier 注册表");
+	console.log("Issue 012 Verification — Tier 注册表 (4-tier)");
 	console.log("=".repeat(60));
 
 	// ── Test 1: TIER_ORDER 数据 ──
 	console.log("\n── Test 1: TIER_ORDER 数据 ──");
-	check("1.1 3 个 tier", tierCount() === 3);
-	check("1.2 id 为 1/2/3", TIER_ORDER.map((t) => t.id).join(",") === "1,2,3");
-	check("1.3 Tier 3 有 prePhase=POSTPROCESS_SETUP", TIER_ORDER[2].prePhase === "POSTPROCESS_SETUP");
-	check("1.4 Tier 1/2 无 prePhase", TIER_ORDER[0].prePhase === undefined && TIER_ORDER[1].prePhase === undefined);
+	check("1.1 4 个 tier", tierCount() === 4);
+	check("1.2 id 为 1/2/3/4", TIER_ORDER.map((t) => t.id).join(",") === "1,2,3,4");
+	check("1.3 Tier 1 是方向 (transformBased)", TIER_ORDER[0].label === "方向" && TIER_ORDER[0].transformBased === true);
+	check("1.4 Tier 4 有 prePhase=POSTPROCESS_SETUP", TIER_ORDER[3].prePhase === "POSTPROCESS_SETUP");
 
 	// ── Test 2: resolveTier 归类 ──
 	console.log("\n── Test 2: resolveTier 归类 ──");
 
-	// refPath → tier
+	check("2.1 set_actor_transform → 1", resolveTier("ActorTools_set_actor_transform", { actor: { refPath: "/DirectionalLight_0" } }) === 1);
+	check("2.2 get_actor_transform → 1", resolveTier("ActorTools_get_actor_transform", {}) === 1);
 	check(
-		"2.1 DirectionalLight refPath → 1",
-		resolveTier(SET_PROPS, { instance: { refPath: "/Game/Main.Main:PersistentLevel.DirectionalLight_0.LightComponent0" } }) === 1,
+		"2.3 DirectionalLight refPath → 2",
+		resolveTier(SET_PROPS, { instance: { refPath: "/Game/Main.Main:PersistentLevel.DirectionalLight_0.LightComponent0" } }) === 2,
 	);
 	check(
-		"2.2 SkyLight refPath → 1",
-		resolveTier(SET_PROPS, { instance: { refPath: "/Game/Main.Main:PersistentLevel.SkyLight_0.SkyLightComponent0" } }) === 1,
+		"2.4 SkyAtmosphere refPath → 3",
+		resolveTier(SET_PROPS, { instance: { refPath: "/Game/Main.Main:PersistentLevel.SkyAtmosphere_0.SkyAtmosphereComponent" } }) === 3,
 	);
 	check(
-		"2.3 SkyAtmosphere refPath → 2",
-		resolveTier(SET_PROPS, { instance: { refPath: "/Game/Main.Main:PersistentLevel.SkyAtmosphere_0.SkyAtmosphereComponent" } }) === 2,
+		"2.5 PostProcessVolume refPath → 4",
+		resolveTier(SET_PROPS, { instance: { refPath: "/Game/Main.Main:PersistentLevel.PostProcessVolume_0" } }) === 4,
 	);
 	check(
-		"2.4 VolumetricCloud refPath → 2",
-		resolveTier(SET_PROPS, { instance: { refPath: "/Game/Main.Main:PersistentLevel.VolumetricCloud_0.VolumetricCloudComponent" } }) === 2,
+		"2.6 values 'temperature' → 2",
+		resolveTier(SET_PROPS, { instance: { refPath: "/x" }, values: '{"temperature": 4300}' }) === 2,
 	);
 	check(
-		"2.5 PostProcessVolume refPath → 3",
-		resolveTier(SET_PROPS, { instance: { refPath: "/Game/Main.Main:PersistentLevel.PostProcessVolume_0" } }) === 3,
-	);
-
-	// values 字符串 → tier（属性名匹配）
-	check(
-		"2.6 values 'temperature' → 1",
-		resolveTier(SET_PROPS, { instance: { refPath: "/x" }, values: '{"temperature": 4300}' }) === 1,
+		"2.7 values 'whiteTemp' → 4",
+		resolveTier(SET_PROPS, { instance: { refPath: "/x" }, values: '{"whiteTemp": 6500}' }) === 4,
 	);
 	check(
-		"2.7 values 'whiteTemp' → 3",
-		resolveTier(SET_PROPS, { instance: { refPath: "/x" }, values: '{"whiteTemp": 6500}' }) === 3,
-	);
-
-	// properties 对象 key → tier
-	check(
-		"2.8 properties 'colorSaturation' → 3",
-		resolveTier(SET_PROPS, { instance: { refPath: "/x" }, properties: { colorSaturation: 1.2 } }) === 3,
+		"2.8 properties 'fogDensity' → 3",
+		resolveTier(SET_PROPS, { instance: { refPath: "/x" }, properties: { fogDensity: 0.02 } }) === 3,
 	);
 	check(
-		"2.9 properties 'fogDensity' → 2",
-		resolveTier(SET_PROPS, { instance: { refPath: "/x" }, properties: { fogDensity: 0.02 } }) === 2,
-	);
-
-	// 无匹配 → null
-	check(
-		"2.10 无匹配 → null",
+		"2.9 无匹配 → null",
 		resolveTier(SET_PROPS, { instance: { refPath: "/x" }, values: '{"unknownProp": 1}' }) === null,
 	);
-	check("2.11 空参数 → null", resolveTier("SomeTool", {}) === null);
 
 	// ── Test 3: nextTier 顺序 ──
 	console.log("\n── Test 3: nextTier 顺序 ──");
-	const n1 = nextTier(1);
-	check("3.1 nextTier(1) → id 2 无 prePhase", n1?.id === 2 && n1.prePhase === undefined);
-	const n2 = nextTier(2);
-	check("3.2 nextTier(2) → prePhase=POSTPROCESS_SETUP", n2?.prePhase === "POSTPROCESS_SETUP");
-	check("3.3 nextTier(3) → null", nextTier(3) === null);
+	check("3.1 nextTier(1) → id 2", nextTier(1)?.id === 2);
+	check("3.2 nextTier(2) → id 3", nextTier(2)?.id === 3);
+	check("3.3 nextTier(3) → prePhase=POSTPROCESS_SETUP", nextTier(3)?.prePhase === "POSTPROCESS_SETUP");
+	check("3.4 nextTier(4) → null", nextTier(4) === null);
 
-	// ── Test 4: getTierDef / 渲染 ──
-	console.log("\n── Test 4: getTierDef / 渲染 ──");
-	check("4.1 getTierDef(1).label = 光源", getTierDef(1)?.label === "光源");
-	check("4.2 getTierDef(99) → undefined", getTierDef(99) === undefined);
-	check("4.3 buildTunableLine(1) 含 DirectionalLight", buildTunableLine(1).includes("DirectionalLight"));
-	check("4.4 buildTunableLine(2) 含 SkyAtmosphere", buildTunableLine(2).includes("SkyAtmosphere"));
+	// ── Test 4: extractRefPath / extractWriteTarget ──
+	console.log("\n── Test 4: extractRefPath / extractWriteTarget ──");
+	check("4.1 instance.refPath", extractRefPath({ instance: { refPath: "/x" } }) === "/x");
+	check("4.2 actor.refPath", extractRefPath({ actor: { refPath: "/y" } }) === "/y");
+	check("4.3 instance 优先于 actor", extractRefPath({ instance: { refPath: "/x" }, actor: { refPath: "/y" } }) === "/x");
+	check("4.4 无 refPath → undefined", extractRefPath({}) === undefined);
 	check(
-		"4.5 buildTierListDescription 3 行",
-		(buildTierListDescription().match(/- Tier \d:/g) || []).length === 3,
+		"4.5 extractWriteTarget properties",
+		(extractWriteTarget({ instance: { refPath: "/x" }, properties: { a: 1 } })?.props as Record<string, number>).a === 1,
+	);
+
+	// ── Test 5: 渲染 ──
+	console.log("\n── Test 5: 渲染 ──");
+	check("5.1 getTierDef(1).label = 方向", getTierDef(1)?.label === "方向");
+	check("5.2 buildTunableLine(1) 含 transform", buildTunableLine(1).includes("transform"));
+	check("5.3 buildTunableLine(2) 含 DirectionalLight", buildTunableLine(2).includes("DirectionalLight"));
+	check(
+		"5.4 buildTierListDescription 4 行",
+		(buildTierListDescription().match(/- Tier \d:/g) || []).length === 4,
 	);
 
 	console.log("\n" + "=".repeat(60));

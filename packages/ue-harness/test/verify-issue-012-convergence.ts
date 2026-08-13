@@ -158,21 +158,23 @@ function main() {
 	check("6.2 回滚内容 = 恢复最佳轮参数", (s6.pendingRollback?.[0]?.props.temperature as number) === 6500);
 	check("6.3 已进入 tier2", s6.tier === 2);
 
-	// ── Test 7: advanceTier 全路径 (正常收敛，覆盖 prePhase + FINAL) ──
+	// ── Test 7: advanceTier 全路径 (正常收敛，覆盖 4-tier + prePhase + FINAL) ──
 	console.log("\n── Test 7: advanceTier 全路径 ──");
 	let s7 = createInitialState();
-	s7 = onAssessLighting(s7, [closed("a", 1)], "x"); // SETUP → TUNING tier1
+	s7 = onAssessLighting(s7, [closed("a", 1)], "x"); // SETUP → TUNING tier1 (方向)
 	check("7.1 SETUP → TUNING tier1", s7.phase === "TUNING" && s7.tier === 1);
-	s7 = onAssessLighting(s7, [closed("a", 1)], "x"); // tier1 全 close → tier2
+	s7 = onAssessLighting(s7, [closed("a", 1)], "x"); // tier1 全 close → tier2 (光源)
 	check("7.2 tier1 全 close → tier2", s7.tier === 2, `tier=${s7.tier}`);
-	s7 = onAssessLighting(s7, [closed("a", 2)], "x"); // tier2 全 close → POSTPROCESS_SETUP (prePhase)
-	check("7.3 tier2 全 close → POSTPROCESS_SETUP", s7.phase === "POSTPROCESS_SETUP", `phase=${s7.phase}`);
-	s7 = onAssessLighting(s7, [closed("a", 3)], "x"); // POSTPROCESS_SETUP → TUNING tier3
-	check("7.4 POSTPROCESS_SETUP → TUNING tier3", s7.phase === "TUNING" && s7.tier === 3, `phase=${s7.phase}, tier=${s7.tier}`);
-	s7 = onAssessLighting(s7, [closed("a", 3)], "x"); // tier3 全 close → FINAL
-	check("7.5 tier3 全 close → FINAL", s7.phase === "FINAL", `phase=${s7.phase}`);
-	s7 = onAssessLighting(s7, [closed("a", 3)], "x"); // FINAL 全 close → DONE
-	check("7.6 FINAL 全 close → DONE", s7.phase === "DONE", `phase=${s7.phase}`);
+	s7 = onAssessLighting(s7, [closed("a", 2)], "x"); // tier2 全 close → tier3 (大气)
+	check("7.3 tier2 全 close → tier3", s7.tier === 3, `tier=${s7.tier}`);
+	s7 = onAssessLighting(s7, [closed("a", 3)], "x"); // tier3 全 close → POSTPROCESS_SETUP (prePhase on tier4)
+	check("7.4 tier3 全 close → POSTPROCESS_SETUP", s7.phase === "POSTPROCESS_SETUP", `phase=${s7.phase}`);
+	s7 = onAssessLighting(s7, [closed("a", 4)], "x"); // POSTPROCESS_SETUP → TUNING tier4 (后期)
+	check("7.5 POSTPROCESS_SETUP → TUNING tier4", s7.phase === "TUNING" && s7.tier === 4, `phase=${s7.phase}, tier=${s7.tier}`);
+	s7 = onAssessLighting(s7, [closed("a", 4)], "x"); // tier4 全 close → FINAL
+	check("7.6 tier4 全 close → FINAL", s7.phase === "FINAL", `phase=${s7.phase}`);
+	s7 = onAssessLighting(s7, [closed("a", 4)], "x"); // FINAL 全 close → DONE
+	check("7.7 FINAL 全 close → DONE", s7.phase === "DONE", `phase=${s7.phase}`);
 
 	console.log("\n" + "=".repeat(60));
 	console.log(`结果: ${PASS} ${passed}  ${FAIL} ${failed}`);
