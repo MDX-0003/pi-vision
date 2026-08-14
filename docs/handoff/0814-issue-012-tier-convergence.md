@@ -4,6 +4,7 @@
 **状态**: 核心实现已完成并提交（2 个 commit）；「回归检测」待做
 **来源**: Issue 011 完成后，两次实际 UE 调参 session 暴露的「死磕」问题
 **决策**: 全部与用户（MDX-0003）逐条讨论确认
+**审阅修订**: 2026-08-14 按代码审阅意见补充 §4.4（两层回滚分工）、§4.5（回归检测四个设计决策）、§6（待办更新）、§8（values 通道写回坑）。后续开发按 [Issue 012](../issue/012/012-rollback-regression.md) 执行
 
 ---
 
@@ -90,6 +91,32 @@ LLM 在 Tier 1 死磕 18 轮。关键证据：**sky rbRatio 在迭代 13 收敛�
 
 `extractRefPath`（instance.refPath / actor.refPath）+ `extractWriteTarget`（refPath + props）抽到 tiers.ts，`resolveTier` 和 journal 复用，避免重复。
 
+### 4.4 两层回滚的分工：journal = 执行器，回归信号 = 判断器（审阅补充）
+
+写前读 journal 与定量回归不在同一层级，**不是替代关系**：
+
+| | 写前读 journal（已实现） | 定量回归（Issue 012） |
+|---|---|---|
+| 层级 | 参数空间（输入域，写级） | 结果空间（输出域，轮级） |
+| 回答的问题 | 怎么回退——恢复到什么值 | 该不该回退——什么时候变差了 |
+| 判断能力 | 无（只记 from/to，不判断好坏） | 有（直接度量离参考图多远） |
+
+- **journal 是回滚的执行器**：提供细粒度撤销能力，但不判断好坏；
+- **回归信号是回滚的判断器**：检测"当前定量比 bestRound 明显变差"，但自身无法还原参数；
+- 缺回归信号：round_cap / plateau / oscillation 抓不住「单调调过头再回撤」（autoExposureBias 案例，§2.3）；
+- 缺 journal：检测到回归后无机制把参数恢复回去。
+
+两者执行时机相同（都在 onAssessLighting / tool_result 中），bestRound.journalMark 精确划分「best 之后的写」= 回归判定窗口 = journal 撤销段。指标成本近零：extractQuantSnapshot 已在每次 assess 计算，回归只是比较快照，零新增截图、零新增 Vision 调用。
+
+### 4.5 回归检测的四个设计决策（审阅补充）
+
+| 决策 | 结论 | 理由 |
+|---|---|---|
+| Q1 bestRound 的「best」定义 | **只加定量快照字段，不改更新条件**（close_enough 数量严格递增） | 回归基准 = "LLM 自己认为最好的轮"的指标。即使非指标全局最优，拉回自身最佳点已优于继续漂移；改条件会连带 plateau 检测与回滚语义漂移 |
+| Q2 「明显变差」阈值 | luminanceDeltaPct 主信号（恶化 >15pp）+ deltaE_mean 次信号（恶化 >3），AND；v1 纯指标 + 保守大阈值 | 案例信号极强（9% → -27.7%）；009 教训：auto-exposure 污染的亮度指标会误触发，大阈值 + 主次信号 AND 缓解。不用"指标+Vision 双确认"以保持机器判定确定性 |
+| Q3 回滚范围 | 接受 computeRollbackWrites 现有「整段撤销 mark 之后所有写」 | 逐写归因需每写一截图，成本爆炸；tier 内参数互相影响，整段恢复一致性最好。**宁可多退（多花 1-2 轮重调），不可少退（死磕复发）** |
+| Q4 信号顺序与防循环 | regression 放 detectStall 中 oscillation 之前（round_cap → plateau → regression → oscillation） | 结果级信号比过程级推断更硬。防循环天然成立：回归触发走 advanceTier → resetTierProgress 清空 bestRound/journal，tier 单向推进；首轮无 bestRound 天然不触发 |
+
 ---
 
 ## 5. 验证状态
@@ -104,9 +131,10 @@ LLM 在 Tier 1 死磕 18 轮。关键证据：**sky rbRatio 在迭代 13 收敛�
 
 | 项 | 说明 | 状态 |
 |---|---|---|
-| **回归检测**（最重要） | 给 `bestRound` 加定量快照（luminanceDeltaPct / deltaE_mean），新增 `regression` 信号：当前定量比 bestRound 明显变差 → 回退 + 强制推进。`extractQuantSnapshot` 已算出这些指标，只是没用它们做停滞判定 | ⬜ 待做 |
-| **实机 smoke test** | 验证 `get_properties` 读标量值 + `properties` 回滚写 + `set_actor_transform` 旋转，三条 UE 写路径是否真生效（本环境无 UE 运行，未验证） | ⬜ 待做 |
-| 收紧阈值（次要） | 震荡检测扩展到 struct 字段（lightColor 的 R/B 比值作标量代理）、plateau 用移动窗口、round_cap 下调到 5-6。**注意：这些对 autoExposureBias 这种「单调调过头」无用**，回归检测才是对症的 | ⬜ 降级 |
+| **values 通道写回修复** | `applyRollback` 对所有非 transform 写一律走 `properties` 通道，PPV settings struct 会静默失败（§8）。JournalEntry 加 channel 字段，按原通道写回 | 📋 Issue 012（先做，依赖项） |
+| **回归检测**（核心） | `bestRound` 加定量快照（luminanceDeltaPct / deltaE_mean），新增 `regression` 信号：当前定量比 bestRound 明显变差 → 回退 + 强制推进。阈值与决策见 §4.5。`extractQuantSnapshot` 已算出这些指标，只是没用它们做停滞判定 | 📋 Issue 012 |
+| **实机 smoke test** | 验证 `get_properties` 读标量值 + `properties` 回滚写 + `set_actor_transform` 旋转 + values 通道回滚（PPV），四条 UE 写路径是否真生效（本环境无 UE 运行，未验证）。**前置**：回归会让回滚第一次在实机真正执行 | 📋 Issue 012（前置/伴随） |
+| 收紧阈值（次要） | 震荡检测扩展到 struct 字段（lightColor 的 R/B 比值作标量代理）、plateau 用移动窗口、round_cap 下调到 5-6。**注意：这些对 autoExposureBias 这种「单调调过头」无用**，回归检测才是对症的 | ⬜ 降级（非本期） |
 
 ---
 
@@ -136,6 +164,7 @@ LLM 在 Tier 1 死磕 18 轮。关键证据：**sky rbRatio 在迭代 13 收敛�
 | 08-14 | **`AgentToolResult<T>` 泛型缺参** | assess-lighting / map-atmosphere 原返回 `AgentToolResult`（无类型参数），且 `details` 是必填字段、类型里没有 `isError`。已修为 `<null>` + `details: null` + 去掉 `isError` |
 | 08-14 | **husky pre-commit 环境坑** | 钩子（biome/npm）在 cmd.exe 跑，node 不在 cmd PATH → 报 `'node' 不是内部或外部命令`。本环境提交需 `git commit --no-verify`，等价验证手动跑 tsc + 测试 |
 | 08-14 | **`session_analysis.md` 是生成产物** | 由 session-summarizer 产出，提交时排除 |
+| 08-14 | **`applyRollback` 一律走 properties 通道** | PPV settings 是 struct，properties 通道写回静默失败（不报错、值不生效，见 memory: ppv-set-properties-struct）；且 `!r.isError` 判定成功会把失败记成"已回滚"。autoExposureBias 恰好是 PPV settings 字段、恰好是最该触发回滚的案例——实机第一次触发回滚就会撞上。修复：JournalEntry 加 `channel: "properties" \| "values" \| "transform"`，applyRollback 按原通道写回（Issue 012） |
 
 ---
 
