@@ -13,6 +13,7 @@ import { join } from "path";
 import { setPhaseState, setUeClient, setVisionClient } from "./state.ts";
 import { assessLightingDef, executeAssessLighting, type AssessLightingResult } from "./tools/assess-lighting.ts";
 import { executeMapAtmosphere, mapAtmosphereDef } from "./tools/map-atmosphere.ts";
+import { confirmTierDoneDef, executeConfirmTierDone } from "./tools/confirm-tier.ts";
 import {
 	savePresetDef,
 	executeSavePreset,
@@ -294,6 +295,17 @@ function registerSelfTools(pi: ExtensionAPI): void {
 		promptSnippet: assessLightingDef.promptSnippet,
 		promptGuidelines: assessLightingDef.promptGuidelines,
 		execute: (_id: string, params: { reference_path: string }) => executeAssessLighting(params),
+	});
+
+	// confirm_tier_done (Issue 012 review — LLM 主动声明 Tier 完成)
+	pi.registerTool({
+		name: confirmTierDoneDef.name,
+		label: confirmTierDoneDef.label,
+		description: confirmTierDoneDef.description,
+		parameters: confirmTierDoneDef.parameters,
+		promptSnippet: confirmTierDoneDef.promptSnippet,
+		promptGuidelines: confirmTierDoneDef.promptGuidelines,
+		execute: (_id: string, params: { reason: string }) => executeConfirmTierDone(params),
 	});
 
 	// ── Issue 008b: 预设工具 ──

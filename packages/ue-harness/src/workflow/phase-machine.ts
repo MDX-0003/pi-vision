@@ -363,6 +363,20 @@ function advanceTier(state: PhaseState): void {
 	resetTierProgress(state);
 }
 
+/**
+ * Issue 012 review — LLM 主动声明当前 Tier 已完成 (如光照方向已符合参考图、无需调整)。
+ * 走与机器判定 (allTierAspectsClosed) 相同的 advanceTier 单入口, 副作用字节级一致。
+ * 仅 TUNING 阶段有效; 非 TUNING 调用为 no-op (工具层会拦截并提示 LLM)。
+ */
+export function confirmTierDone(state: PhaseState, reason: string): void {
+	if (state.phase !== "TUNING") {
+		console.warn(`[ue-harness] confirm_tier_done ignored: phase=${state.phase}`);
+		return;
+	}
+	console.log(`[ue-harness] confirm_tier_done: Tier ${state.tier} 由 LLM 确认完成 — ${reason}`);
+	advanceTier(state);
+}
+
 // ── 定量快照存储 ──
 
 function pushQuantitativeSnapshot(

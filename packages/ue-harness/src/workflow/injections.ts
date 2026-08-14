@@ -37,6 +37,7 @@ ${buildTunableLine(s.tier)}
   - 修改完一批参数后，调 assess_lighting(reference_path) 获取 Vision 综合诊断
   - Vision 的 analysis 中 needs_adjustment 项 = 仍需调参
   - 当前 Tier 所有 aspect close_enough → 自动进入下一 Tier
+  - 若你认为当前 Tier 已达标或无需调整（如方向已匹配参考图），可调 confirm_tier_done(reason) 声明完成
   - 跨 Tier 调参会自动被阻止${s.tierRoundCount > 0 ? `\n  - 当前 Tier 已进行 ${s.tierRoundCount}/${TIER_MAX_ROUNDS} 轮调参` : ""}`,
 
 	POSTPROCESS_SETUP: (_s) => `

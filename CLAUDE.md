@@ -36,6 +36,7 @@ LLM (Pi) ←→ ue-harness extension ←→ UE MCP Server (:8000)
 | `src/vision/vision-client.ts` | Vision API 客户端 |
 | `src/tools/assess-lighting.ts` | **009b**: `assess_lighting` — 串行架构（Stage1 定量+标签并行, Stage2 Vision 决策） |
 | `src/tools/map-atmosphere.ts` | **004**: `map_atmosphere` — 场景氛围组件扫描 |
+| `src/tools/confirm-tier.ts` | **012 review**: `confirm_tier_done` — LLM 主动声明当前 Tier 完成并推进（advanceTier 单入口） |
 | `src/tools/atmosphere-whitelist.ts` | 氛围属性 whitelist + Tier 映射 |
 | `src/workflow/tiers.ts` | **012**: Tier 注册表 — `TIER_ORDER` 单一数据源, resolveTier, nextTier, extractWriteTarget, 渲染 |
 | `src/workflow/phase-machine.ts` | **009c+012**: Phase 状态机 — tier 轮数追踪, bestRound, 停滞检测, 回归检测, 回滚 |

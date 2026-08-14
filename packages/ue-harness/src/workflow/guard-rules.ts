@@ -119,7 +119,8 @@ export function checkToolCall(
 					reason:
 						`当前 Tier ${state.tier}，禁止调 Tier ${targetTier} 的参数。` +
 						`前置维度仍有 needs_adjustment: ${unmet.map((a) => `${a.aspect}`).join(", ")}。` +
-						`请先解决当前 Tier 的问题再进入 Tier ${targetTier}。`,
+						`请先解决当前 Tier 的问题再进入 Tier ${targetTier}。` +
+						`若你认为当前 Tier 已达标或无需调整，可调 confirm_tier_done(reason) 声明完成并进入下一 Tier。`,
 				};
 			}
 		}
