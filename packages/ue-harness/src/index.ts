@@ -40,9 +40,10 @@ import {
 	recordWrite,
 	type PhaseState,
 	type QuantitativeSnapshot,
-	type RollbackWrite,
+	type WriteChannel,
 } from "./workflow/phase-machine.ts";
 import { extractRefPath, extractWriteTarget } from "./workflow/tiers.ts";
+import { applyRollback } from "./workflow/rollback.ts";
 
 // ── Vision auth 文件 ──
 
@@ -95,16 +96,15 @@ function getConfig(): UeHarnessConfig {
 
 const SET_PROPS_KEYWORD = "set_properties";
 const GET_PROPS_TOOL = "toolset_registry.toolsets.core.object.ObjectTools.get_properties";
-const SET_PROPS_TOOL = "toolset_registry.toolsets.core.object.ObjectTools.set_properties";
 const SET_TRANSFORM_KEYWORD = "set_actor_transform";
 const GET_TRANSFORM_TOOL = "toolset_registry.toolsets.core.actor.ActorTools.get_actor_transform";
-const SET_TRANSFORM_TOOL = "toolset_registry.toolsets.core.actor.ActorTools.set_actor_transform";
 
 interface PreWriteEntry {
 	refPath: string;
 	prop: string;
 	from: unknown;
 	to: unknown;
+	channel: WriteChannel;
 }
 
 /** 解析 UE 返回的 returnValue 包裹 (与 map-atmosphere.ts / assess-lighting.ts 相同逻辑) */
@@ -167,12 +167,18 @@ async function capturePreWrite(params: Record<string, unknown>): Promise<PreWrit
 	const propNames = Object.keys(target.props);
 	if (propNames.length === 0) return null;
 
+	// 通道判定: properties object → properties; values JSON 字符串 → values (PPV settings struct)
+	const channel: WriteChannel =
+		params.properties !== undefined && typeof params.properties === "object"
+			? "properties"
+			: "values";
+
 	const fromValues = await readCurrentValues(target.refPath, propNames);
 
 	const entries: PreWriteEntry[] = [];
 	for (const [prop, to] of Object.entries(target.props)) {
 		if (prop in fromValues) {
-			entries.push({ refPath: target.refPath, prop, from: fromValues[prop], to });
+			entries.push({ refPath: target.refPath, prop, from: fromValues[prop], to, channel });
 		}
 	}
 	return entries.length > 0 ? entries : null;
@@ -187,24 +193,7 @@ async function captureTransformPreWrite(params: Record<string, unknown>): Promis
 	if (to === undefined) return null;
 	const from = await readCurrentTransform(refPath);
 	if (from === undefined) return null;
-	return [{ refPath, prop: "transform", from, to }];
-}
-
-/** 将回滚写应用到 UE (transform 用 set_actor_transform，其余用 set_properties) */
-async function applyRollback(writes: RollbackWrite[]): Promise<string | null> {
-	if (!_ueClient?.isConnected) return null;
-	let applied = 0;
-	for (const w of writes) {
-		const isTransform = "transform" in w.props;
-		const tool = isTransform ? SET_TRANSFORM_TOOL : SET_PROPS_TOOL;
-		const args = isTransform
-			? { actor: { refPath: w.refPath }, transform: w.props.transform }
-			: { instance: { refPath: w.refPath }, properties: w.props };
-		const r = await _ueClient.callToolWithRetry(tool, args);
-		if (!r.isError) applied++;
-	}
-	if (applied === 0) return null;
-	return `\n[ue-harness] 检测到停滞，已回滚 ${applied}/${writes.length} 个 actor 到历史最佳参数。`;
+	return [{ refPath, prop: "transform", from, to, channel: "transform" }];
 }
 
 /** Issue 012: footer 状态栏显示的 tier 文本 */
@@ -265,7 +254,7 @@ function createUeToolExecutor(toolName: string) {
 		// Issue 012: 写成功后记录变迁日志
 		if (journal && !result.isError) {
 			for (const e of journal) {
-				recordWrite(_phaseState, e.refPath, e.prop, e.from, e.to);
+				recordWrite(_phaseState, e.refPath, e.prop, e.from, e.to, e.channel);
 			}
 		}
 
@@ -543,7 +532,7 @@ export default function ueHarnessExtension(pi: ExtensionAPI): void {
 			if (_phaseState.pendingRollback && _phaseState.pendingRollback.length > 0) {
 				const rb = _phaseState.pendingRollback;
 				_phaseState.pendingRollback = null;
-				const note = await applyRollback(rb);
+				const note = _ueClient?.isConnected ? await applyRollback(_ueClient, rb) : null;
 				if (note) extraContent.push({ type: "text", text: note });
 			}
 

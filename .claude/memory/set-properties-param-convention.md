@@ -1,22 +1,22 @@
 ---
 name: set-properties-param-convention
-description: set_properties 对常规组件用 properties (object)，对 PPV Settings struct 用 values (JSON 字符串)，两种路径不可互换
+description: set_properties 只有 values (JSON 字符串) 一个通道，没有 properties 参数；set_actor_transform 参数名是 xform
 metadata:
-  type: convention
+  type: gotcha
 ---
 
-`toolset_registry.toolsets.core.object.ObjectTools.set_properties` 有两个参数路径，使用规则取决于目标的类型：
+**2026-08-14 实机验证（UE MCP schema）修正**：此前记录的"常规组件用 properties object、PPV 用 values"是**错的**。当前 UE build 的 `set_properties` schema：
 
-| 目标类型 | 参数 | 示例 |
-|------|------|------|
-| 常规组件属性 (DirectionalLight, SkyLight, SkyAtmosphere, Fog) | `properties` (object) | `{ properties: { intensity: 10, lightColor: {r:1,g:0.9,b:0.8,a:1} } }` |
-| PPV Settings 子结构 (FPostProcessSettings) | `values` (JSON 字符串) | `{ values: '{"settings": {"WhiteTemp": 6500, ...}}' }` |
+```json
+{ "type": "object", "properties": { "instance": {...}, "values": {"type": "string"} }, "required": ["instance", "values"] }
+```
 
-**Why**: 常规组件的属性是 UPROPERTY 暴露的顶层字段，MCP 工具可直接按名存取。PostProcessVolume 的 color grading 参数嵌套在 `Settings` (FPostProcessSettings) 子结构中——这是一个 UE struct 类型，必须序列化为 JSON 字符串走 `values` 通道整体写回，不能逐字段 `properties` 写入。
+**所有 set_properties 调用必须用 `values: JSON.stringify(props)`**：
+- 常规组件（DirectionalLight 等）: `values: '{"intensity":6}'`（props 直接展开）
+- PPV settings: `values: '{"settings": {...}}'`（settings 整体 struct，仍需 bOverride_* 标志）
 
-**How to apply**:
-1. 写 DirectionalLight/SkyLight/SkyAtmosphere/Fog 属性 → `properties: { key: value }`
-2. 写 PostProcessVolume Settings → 三步流程：`get_properties(["settings"])` 读取完整 struct → 内存中修改目标字段 + `bOverride_*` → `values: JSON.stringify({ settings: modified })` 写回
-3. 如果 set_properties 不报错但值不变 → 检查是否用了错误的参数名（properties vs values）
+**set_actor_transform**：参数名是 **`xform`**（不是 transform），ToolsetTransform = { location, rotation, scale }，rotation 字段为**小写** `pitch/yaw/roll`（get_actor_transform 返回同样小写）。
 
-**关联**: [[ppv-set-properties-struct]], [[ue-mcp-tool-naming]]
+**Why**: 2026-08-14 实机 smoke test 发现旧写法（properties object / transform 参数）全部返回 server_error `input param "values"/"xform" is required`。apply.ts（008d 预设应用）与旧 applyRollback 因此从未在实机生效。
+
+**How to apply**: 任何写 UE 的代码（set_properties / set_actor_transform）必须按此 schema；get_properties 仍用 `properties: [...]`（数组）读。参考 rollback.ts / apply.ts / assess-lighting.ts 的 resetPostProcessToDefaults。

@@ -59,13 +59,15 @@ export interface JournalEntry {
 
 - `capturePreWrite`：根据 `params.properties`（object）vs `params.values`（JSON 字符串）判定通道，填入 entry
 - `captureTransformPreWrite`：固定 `channel: "transform"`
-- `applyRollback`：按 `w.channel` 分派
-  - `transform` → `set_actor_transform` + `{ actor: { refPath }, transform: w.props.transform }`
-  - `values` → `set_properties` + `{ instance: { refPath }, values: JSON.stringify(w.props) }`
-  - `properties` → `set_properties` + `{ instance: { refPath }, properties: w.props }`
+- `applyRollback`：按 `w.channel` 分派（**2026-08-14 实机验证后的最终形状**）
+  - `transform` → `set_actor_transform` + `{ actor: { refPath }, xform: w.props.transform }`（参数名是 **xform**，不是 transform）
+  - `values` / `properties` → `set_properties` + `{ instance: { refPath }, values: JSON.stringify(w.props) }`（**实机 schema 只有 values 通道**，无 properties 参数）
 - `computeRollbackWrites` 合并逻辑不变，按 channel 分组（同 refPath 同 prop 不同通道的写，取 mark 后第一次的 from）
 
-**验证点（实机）**：get_properties 读回的 settings struct 字段名（PascalCase，如 WhiteTemp）与 values 写入时的字段名一致，from 值才能直接写回——参考 memory: ppv-set-properties-struct / ue-mcp-tool-naming。
+**实机验证结论（2026-08-14，smoke test）**：
+- set_properties schema = `{ instance, values: string }`（required），常规组件 `values: '{"intensity":6}'`、PPV `values: '{"settings":{...}}'` 均实测生效
+- set_actor_transform 参数名 **xform**，rotation 字段为**小写** pitch/yaw/roll（journal 的 from 值整体往返，无需改大小写）
+- 旧写法（`properties` object / `transform`）实机返回 server_error——**apply.ts（008d 预设应用）与旧 applyRollback 的写路径从未在实机生效过，本 issue 一并修复 apply.ts**
 
 ### 2. bestRound 加定量快照
 

@@ -3,6 +3,8 @@
 **本文件受众**：在 pi monorepo 中开发 `packages/ue-harness/` 的 AI agent。
 **全局规则**：[AGENTS.md](AGENTS.md)（代码质量、命令、Git、发布等，对本文件中的约定有更高优先级）。
 
+本地commit使用：git commit --no-verify
+远端push使用：git push origin main                
 ---
 
 ## 1. 项目定位
@@ -36,7 +38,8 @@ LLM (Pi) ←→ ue-harness extension ←→ UE MCP Server (:8000)
 | `src/tools/map-atmosphere.ts` | **004**: `map_atmosphere` — 场景氛围组件扫描 |
 | `src/tools/atmosphere-whitelist.ts` | 氛围属性 whitelist + Tier 映射 |
 | `src/workflow/tiers.ts` | **012**: Tier 注册表 — `TIER_ORDER` 单一数据源, resolveTier, nextTier, extractWriteTarget, 渲染 |
-| `src/workflow/phase-machine.ts` | **009c+012**: Phase 状态机 — tier 轮数追踪, bestRound, 停滞检测, 回滚 |
+| `src/workflow/phase-machine.ts` | **009c+012**: Phase 状态机 — tier 轮数追踪, bestRound, 停滞检测, 回归检测, 回滚 |
+| `src/workflow/rollback.ts` | **012**: 回滚写执行器 — 按通道分派（values JSON / xform），可 mock 测试 |
 | `src/workflow/injections.ts` | **009c+012**: `before_agent_start` 注入 — analysis summary, 趋势, 收尾提示, 预设匹配, 停滞提示 |
 | `src/workflow/guard-rules.ts` | **009d+012**: `tool_call` 拦截 — 硬上限, Phase/Tier 门控（调 tiers.ts resolveTier） |
 | `src/presets/` | **008**: 预设系统（types, store, capture, match, apply, tools） |
@@ -56,7 +59,7 @@ LLM (Pi) ←→ ue-harness extension ←→ UE MCP Server (:8000)
 | 009 | `assess_lighting` 串行化重构 + 定量扩容 + Vision 角色重定义 | ✅ 已完成（48 tests） |
 | 010 | 实际 UE 场景验证 + Prompt smoke test | ⬜ 待做（含实机 smoke test） |
 | 011 | 预设混合检索 — ONNX Embedding + BM25 + RRF 融合 | ✅ 已完成 |
-| 012 | Tier 停滞收敛 + 回滚 + 方向 tier（tiers.ts 数据驱动） | ✅ 核心完成，回归检测待做 |
+| 012 | Tier 停滞收敛 + 回滚 + 方向 tier + 回归检测 + 写通道修复 | ✅ 已完成（回归检测 / rollback.ts 通道分派 / apply.ts 修复，83 项测试 + 实机验证） |
 
 **完整 PRD**：[docs/ue-harness-extension-prd.md](docs/ue-harness-extension-prd.md)
 **最近 handoff**：[docs/handoff/0814-issue-012-tier-convergence.md](docs/handoff/0814-issue-012-tier-convergence.md)
@@ -207,7 +210,8 @@ Memory 示例：
 | 2026-08-11 | 009: `computeGap()` 取 max(定量,Vision) 导致 brightness 被 auto-exposure 污染的定量永远报 major，LLM 死锁于 Tier 1 | 方案：串行架构，定量数据注入 Vision prompt，代码层不再调和 |
 | 2026-08-11 | 009: artificiality catch-22 — guard 要求回退 PostProcess → 回退是 PostProcess 写操作 → 同一个 guard 拦截 | 方案：SETUP 阶段扩展直接调 MCP 重置 PostProcess，绕过 guard |
 | 2026-08-11 | 009: PRD 工具名错误 `ToolsetRegistry.SceneTools...` → 实际为 `toolset_registry.toolsets.core.scene.SceneTools...` | 已修正 PRD §7.5；工具名均为 snake_case 小写 |
-| 2026-08-11 | 009: PRD `set_properties` 参数错误 `{ values: JSON.stringify(...) }` → 实际为 `{ properties: {...} }` | 已修正 PRD §7.5；参考 `apply.ts` 的实际调用签名 |
+| 2026-08-11 | 009: PRD `set_properties` 参数一度被误判为 `{ properties: {...} }` | **2026-08-14 实机推翻该修正**：本 UE build 的 set_properties 只有 `values`（JSON 字符串）通道，原 PRD 的 `{ values: JSON.stringify(...) }` 才是对的 |
+| 2026-08-14 | 实机验证: `set_properties` 只有 values 通道（无 properties 参数）；`set_actor_transform` 参数名是 `xform`（rotation 小写 pitch/yaw/roll） | apply.ts 与旧 applyRollback 写路径从未在实机生效；已修复 [docs/bug-notes/ue-mcp-set-params-schema.md](docs/bug-notes/ue-mcp-set-params-schema.md)；memory: set-properties-param-convention 已重写 |
 
 **这是教训区的起点。** 后续发现任何 bug 或踩坑经验，按 §7 的规范同时更新：
 1. 在 `docs/bug-notes/` 写完整 bug 报告

@@ -13,7 +13,7 @@ PostProcessVolume 的 color grading 参数（WhiteTemp, ColorSaturation 等）�
 3. `set_properties({ instance: { refPath }, values: JSON.stringify({ settings: modified }) })` 以 values JSON 字符串整体写回
 
 **关键差异 vs 常规组件**:
-- 参数名: PPV 用 `values` (JSON 字符串)，常规组件用 `properties` (object)
+- 参数名: 2026-08-14 实机验证后——**所有 set_properties 都用 `values` (JSON 字符串)**，常规组件 `values: '{"intensity":6}'`，PPV `values: '{"settings": {...}}'`（本 UE build 无 properties 参数，见 [[set-properties-param-convention]]）
 - 层级: PPV 属性在 `settings` 子结构下，常规组件属性直接在 component 顶层
 - bOverride: PPV 必须设置 `bOverride_<PropertyName>: true`，否则 UE 忽略值
 

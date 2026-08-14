@@ -40,15 +40,20 @@ export interface JournalEntry {
 	prop: string;
 	from: unknown;
 	to: unknown;
+	channel: WriteChannel;
 }
 
-/** Issue 012: 回滚写 (按 refPath 合并, props = 要恢复的值) */
+/** Issue 012: 回滚写 (按 refPath+channel 合并, props = 要恢复的值) */
 export interface RollbackWrite {
 	refPath: string;
+	channel: WriteChannel;
 	props: Record<string, unknown>;
 }
 
-export type StallKind = "round_cap" | "plateau" | "oscillation";
+export type StallKind = "round_cap" | "plateau" | "oscillation" | "regression";
+
+/** Issue 012: 写操作的通道 (决定回滚时用哪个 UE 工具与参数形状) */
+export type WriteChannel = "properties" | "values" | "transform";
 
 /** Issue 012: 停滞检测结果 */
 export interface StallDetection {
@@ -84,6 +89,11 @@ export interface PhaseState {
 		overall: string;
 		/** Issue 012: 该最佳轮时 changeJournal 的长度 (回滚分界点) */
 		journalMark: number;
+		/** Issue 012: 该最佳轮的定量快照 (回归检测基准) */
+		quant?: {
+			luminanceDeltaPct: number;
+			deltaE_mean: number;
+		};
 	} | null;
 
 	/** 最近 3 轮定量快照 (newest last), 供跨轮趋势注入 */
@@ -103,6 +113,9 @@ export interface PhaseState {
 	/** 自上次 close_enough 改善以来的连续轮数 (平台检测) */
 	roundsSinceImprovement: number;
 
+	/** Issue 012: 本 tier 已触发回归回滚的次数 (超限后回归 → 强制推进) */
+	rollbackCount: number;
+
 	/** 最近一次停滞检测结果 (供注入提示, 下次 assess 时清零) */
 	lastStall: StallDetection | null;
 }
@@ -117,6 +130,15 @@ export const PLATEAU_ROUNDS = 3;
 
 /** Issue 012: 同一参数方向反转 ≥ N 次 → 判定震荡 */
 export const OSCILLATION_REVERSALS = 3;
+
+/** Issue 012: 回归检测 — 亮度偏差恶化阈值 (百分点), 默认值来自 session_analysis.md 实机数据 */
+export const REGRESSION_LUM_DELTA_PP = 15;
+
+/** Issue 012: 回归检测 — deltaE_mean 恶化阈值 */
+export const REGRESSION_DELTAE = 3;
+
+/** Issue 012: 每 tier 最多回归回滚重试次数 (超限后再次回归 → 回滚 + 强制推进) */
+export const REGRESSION_MAX_ROLLBACKS = 1;
 
 /** 全局 assess_lighting 调用上限 (tier 数 × 每 tier 轮数) */
 const MAX_ASSESS = tierCount() * TIER_MAX_ROUNDS;
@@ -137,6 +159,7 @@ export function createInitialState(): PhaseState {
 		changeJournal: [],
 		pendingRollback: null,
 		roundsSinceImprovement: 0,
+		rollbackCount: 0,
 		lastStall: null,
 	};
 }
@@ -153,7 +176,12 @@ export function allTierAspectsClosed(analysis: AnalysisEntry[], tier: number): b
 // ── bestRound 追踪 ──
 
 /** 返回 true 表示本轮刷新了最佳 (close_enough 改善) */
-function trackBestRound(state: PhaseState, analysis: AnalysisEntry[], overall: string): boolean {
+function trackBestRound(
+	state: PhaseState,
+	analysis: AnalysisEntry[],
+	overall: string,
+	quantSnapshot?: QuantitativeSnapshot,
+): boolean {
 	const ce = analysis.filter((a) => a.status === "close_enough").length;
 	const na = analysis.filter((a) => a.status === "needs_adjustment").length;
 
@@ -168,6 +196,12 @@ function trackBestRound(state: PhaseState, analysis: AnalysisEntry[], overall: s
 			needsAdjustmentCount: na,
 			overall,
 			journalMark: state.changeJournal.length,
+			quant: quantSnapshot
+				? {
+						luminanceDeltaPct: quantSnapshot.luminanceDeltaPct,
+						deltaE_mean: quantSnapshot.deltaE_mean,
+					}
+				: undefined,
 		};
 		return true;
 	}
@@ -183,8 +217,9 @@ export function recordWrite(
 	prop: string,
 	from: unknown,
 	to: unknown,
+	channel: WriteChannel,
 ): void {
-	state.changeJournal.push({ refPath, prop, from, to });
+	state.changeJournal.push({ refPath, prop, from, to, channel });
 }
 
 // ── 回滚计算 (Issue 012) ──
@@ -200,17 +235,19 @@ export function computeRollbackWrites(state: PhaseState): RollbackWrite[] {
 	const mark = state.bestRound?.journalMark ?? 0;
 	if (state.changeJournal.length <= mark) return [];
 
-	const undo = new Map<string, Record<string, unknown>>();
+	const undo = new Map<string, RollbackWrite>();
 	for (let i = mark; i < state.changeJournal.length; i++) {
 		const e = state.changeJournal[i];
-		const props = undo.get(e.refPath) ?? {};
-		if (!(e.prop in props)) {
-			props[e.prop] = e.from;
+		// 按 refPath + channel 分组: 同 prop 不同通道 (properties vs values) 是不同写路径
+		const key = e.refPath + "::" + e.channel;
+		const w = undo.get(key) ?? { refPath: e.refPath, channel: e.channel, props: {} };
+		if (!(e.prop in w.props)) {
+			w.props[e.prop] = e.from;
 		}
-		undo.set(e.refPath, props);
+		undo.set(key, w);
 	}
 
-	return [...undo.entries()].map(([refPath, props]) => ({ refPath, props }));
+	return [...undo.values()];
 }
 
 // ── 停滞检测 (Issue 012) ──
@@ -270,6 +307,38 @@ function detectOscillation(state: PhaseState): boolean {
 	return false;
 }
 
+// ── 回归检测 (Issue 012) ──
+
+/**
+ * 定量回归: 当前轮指标比 bestRound 明显变差 (主次信号 AND)。
+ * 针对 autoExposureBias 案例的「单调调过头再回撤」——三个停滞信号都抓不住。
+ * 首轮无 bestRound / 无定量快照时天然不触发。
+ */
+export function detectRegression(state: PhaseState): boolean {
+	const best = state.bestRound;
+	const snapshots = state.quantitativeSnapshots;
+	if (!best?.quant || snapshots.length === 0) return false;
+	const cur = snapshots[snapshots.length - 1];
+
+	const lumWorse = cur.luminanceDeltaPct - best.quant.luminanceDeltaPct > REGRESSION_LUM_DELTA_PP;
+	const deWorse = cur.deltaE_mean - best.quant.deltaE_mean > REGRESSION_DELTAE;
+	return lumWorse && deWorse;
+}
+
+/**
+ * 回滚后把 bestRound 重置为新基线:
+ * 参数已恢复到历史最佳 (量化指标对应旧 best 的 quant, 保留),
+ * 但 journalMark 前移到当前 journal 长度 —— 后续回归只撤销新基线之后的写。
+ */
+function resetBestRoundToCurrent(state: PhaseState): void {
+	const old = state.bestRound;
+	if (!old) return;
+	state.bestRound = {
+		...old,
+		journalMark: state.changeJournal.length,
+	};
+}
+
 // ── Tier 推进 ──
 
 /** 清空跨-tier 追踪状态 (唯一清空点, 两条触发路径都走这里) */
@@ -278,6 +347,7 @@ function resetTierProgress(state: PhaseState): void {
 	state.bestRound = null;
 	state.changeJournal = [];
 	state.roundsSinceImprovement = 0;
+	state.rollbackCount = 0;
 }
 
 function advanceTier(state: PhaseState): void {
@@ -324,7 +394,7 @@ export function onAssessLighting(
 	state.lastStall = null;
 
 	// 追踪本 tier 最佳轮
-	const improved = trackBestRound(state, analysis, overall);
+	const improved = trackBestRound(state, analysis, overall, quantSnapshot);
 
 	// 存储定量快照
 	if (quantSnapshot) {
@@ -364,6 +434,37 @@ export function onAssessLighting(
 								: " 进入下一阶段。"),
 					};
 					advanceTier(state);
+				} else if (detectRegression(state)) {
+					// Issue 012: 定量回归 → 回滚 + 留在本 tier 重试 (误操作恢复, 非阶段结束)
+					state.rollbackCount++;
+					const rb = computeRollbackWrites(state);
+					state.pendingRollback = rb;
+					const forceAdvance = state.rollbackCount > REGRESSION_MAX_ROLLBACKS;
+					if (forceAdvance) {
+						// 已达到本 tier 回滚上限 → 回滚 + 强制推进
+						state.lastStall = {
+							stalled: true,
+							kind: "regression",
+							reason:
+								`定量回归连续 ${state.rollbackCount} 次 (上限 ${REGRESSION_MAX_ROLLBACKS})，` +
+								(rb.length > 0
+									? `已回滚 ${rb.length} 个 actor 到历史最佳参数，进入下一阶段。`
+									: "进入下一阶段。"),
+						};
+						advanceTier(state);
+					} else {
+						// 回滚 + 留在本 tier: 重置 bestRound 基线 (journalMark 前移)
+						resetBestRoundToCurrent(state);
+						state.lastStall = {
+							stalled: true,
+							kind: "regression",
+							reason:
+								`检测到定量回归 (比历史最佳明显变差)，` +
+								(rb.length > 0
+									? `已回滚 ${rb.length} 个 actor 到历史最佳参数，继续本 tier 调参 (第 ${state.rollbackCount}/${REGRESSION_MAX_ROLLBACKS} 次回滚)。`
+									: "继续本 tier 调参。"),
+						};
+					}
 				}
 			}
 			break;

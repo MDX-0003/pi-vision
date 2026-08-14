@@ -14,10 +14,12 @@ import {
 	recordWrite,
 	computeRollbackWrites,
 	detectStall,
+	detectRegression,
 	TIER_MAX_ROUNDS,
 	PLATEAU_ROUNDS,
 	OSCILLATION_REVERSALS,
 } from "../src/workflow/phase-machine.ts";
+import type { QuantitativeSnapshot } from "../src/workflow/phase-machine.ts";
 import type { AnalysisEntry } from "../src/tools/assess-lighting.ts";
 
 const PASS = "✅";
@@ -53,8 +55,8 @@ function main() {
 	// ── Test 2: recordWrite ──
 	console.log("\n── Test 2: recordWrite ──");
 	s = createInitialState();
-	recordWrite(s, "DL", "temperature", 6500, 4300);
-	recordWrite(s, "DL", "temperature", 4300, 5200);
+	recordWrite(s, "DL", "temperature", 6500, 4300, "properties");
+	recordWrite(s, "DL", "temperature", 4300, 5200, "properties");
 	check("2.1 追加 2 条记录", s.changeJournal.length === 2);
 	check("2.2 from/to 正确", s.changeJournal[1].from === 4300 && s.changeJournal[1].to === 5200);
 
@@ -68,9 +70,9 @@ function main() {
 
 	// 3.2 mark=1, 之后温度多写一次 + 新参数
 	s3 = createInitialState();
-	recordWrite(s3, "DL", "temperature", 6500, 4300); // idx0 (mark 之前)
-	recordWrite(s3, "DL", "temperature", 4300, 5200); // idx1 (mark 之后)
-	recordWrite(s3, "SL", "lightColor", { r: 1, g: 1, b: 1 }, { r: 1, g: 0.95, b: 0.85 }); // idx2
+	recordWrite(s3, "DL", "temperature", 6500, 4300, "properties"); // idx0 (mark 之前)
+	recordWrite(s3, "DL", "temperature", 4300, 5200, "properties"); // idx1 (mark 之后)
+	recordWrite(s3, "SL", "lightColor", { r: 1, g: 1, b: 1 }, { r: 1, g: 0.95, b: 0.85 }, "properties"); // idx2
 	s3.bestRound = { assessIndex: 1, closeEnoughCount: 1, needsAdjustmentCount: 0, overall: "", journalMark: 1 };
 	const rb32 = computeRollbackWrites(s3);
 	check("3.2 回滚 2 个 actor", rb32.length === 2);
@@ -81,7 +83,7 @@ function main() {
 
 	// 3.3 mark=0, 只有一个"mark 之后才碰"的参数 → 回滚到 from (原始值 6500)
 	s3 = createInitialState();
-	recordWrite(s3, "DL", "temperature", 6500, 4300); // idx0 (mark=0 之后)
+	recordWrite(s3, "DL", "temperature", 6500, 4300, "properties"); // idx0 (mark=0 之后)
 	s3.bestRound = { assessIndex: 1, closeEnoughCount: 1, needsAdjustmentCount: 0, overall: "", journalMark: 0 };
 	const rb33 = computeRollbackWrites(s3);
 	check("3.3 单参数回滚到 from=6500", rb33.length === 1 && (rb33[0].props.temperature as number) === 6500);
@@ -112,7 +114,7 @@ function main() {
 	s.tier = 1;
 	s.tierRoundCount = 1;
 	// 4300 → 5200(↑) → 4800(↓,rev1) → 5100(↑,rev2) → 4600(↓,rev3)
-	for (const v of [4300, 5200, 4800, 5100, 4600]) recordWrite(s, "DL", "temperature", v - 1, v);
+	for (const v of [4300, 5200, 4800, 5100, 4600]) recordWrite(s, "DL", "temperature", v - 1, v, "properties");
 	const stallOsc = detectStall(s);
 	check(`4.3 震荡 → oscillation (反转 ${OSCILLATION_REVERSALS} 次)`, stallOsc.stalled && stallOsc.kind === "oscillation");
 
@@ -148,9 +150,9 @@ function main() {
 	s6 = onAssessLighting(s6, [needs("a", 1)], "x"); // → TUNING tier1
 	s6 = onAssessLighting(s6, [needs("a", 1)], "x"); // round1: 建立 best (journalMark=0)
 	// 记录几笔写 (模拟 LLM 震荡)
-	recordWrite(s6, "DL", "temperature", 6500, 4300);
-	recordWrite(s6, "DL", "temperature", 4300, 5200);
-	recordWrite(s6, "DL", "temperature", 5200, 4800);
+	recordWrite(s6, "DL", "temperature", 6500, 4300, "properties");
+	recordWrite(s6, "DL", "temperature", 4300, 5200, "properties");
+	recordWrite(s6, "DL", "temperature", 5200, 4800, "properties");
 	s6 = onAssessLighting(s6, [needs("a", 1)], "x"); // round2
 	s6 = onAssessLighting(s6, [needs("a", 1)], "x"); // round3
 	s6 = onAssessLighting(s6, [needs("a", 1)], "x"); // round4 → plateau
@@ -175,6 +177,55 @@ function main() {
 	check("7.6 tier4 全 close → FINAL", s7.phase === "FINAL", `phase=${s7.phase}`);
 	s7 = onAssessLighting(s7, [closed("a", 4)], "x"); // FINAL 全 close → DONE
 	check("7.7 FINAL 全 close → DONE", s7.phase === "DONE", `phase=${s7.phase}`);
+
+	// ── Test 8: 定量回归检测 (Issue 012) ──
+	console.log("\n── Test 8: 定量回归检测 ──");
+
+	const q = (lum: number, de: number): QuantitativeSnapshot => ({
+		assessIndex: 0,
+		luminanceDeltaPct: lum,
+		deltaE_mean: de,
+		deltaE_p90: de,
+		chroma_diff: 0,
+		skyLuminanceRatio: 0.3,
+		groundLuminanceRatio: 0.6,
+		histogramCorrelation: 0.9,
+	});
+
+	// 8.0 无 bestRound → 不触发
+	check("8.0 无 bestRound 不触发", detectRegression(createInitialState()) === false);
+
+	// 8.1-8.7 首次回归 → 回滚 + 留在本 tier
+	let s8 = createInitialState();
+	s8 = onAssessLighting(s8, [needs("a", 1)], "x", undefined, q(10, 16)); // SETUP→TUNING t1
+	s8 = onAssessLighting(s8, [needs("a", 1)], "x", undefined, q(10, 16)); // TUNING round1: 建立 best.quant={10,16}
+	check("8.1 建立 bestRound.quant", s8.bestRound?.quant?.luminanceDeltaPct === 10, `lum=${s8.bestRound?.quant?.luminanceDeltaPct}`);
+	recordWrite(s8, "DL", "intensity", 10, 5, "properties");
+	s8 = onAssessLighting(s8, [needs("a", 1)], "x", undefined, q(30, 22)); // lum +20>15, de +6>3 → 回归
+	check("8.2 首次回归 → pendingRollback 非空", (s8.pendingRollback?.length ?? 0) > 0);
+	check("8.3 首次回归 → tier 不变 (留在本 tier)", s8.tier === 1, `tier=${s8.tier}`);
+	check("8.4 rollbackCount=1", s8.rollbackCount === 1);
+	check("8.5 bestRound 基线前移 (journalMark=当前长度)", s8.bestRound?.journalMark === s8.changeJournal.length, `mark=${s8.bestRound?.journalMark}, len=${s8.changeJournal.length}`);
+	check("8.6 lastStall.kind=regression", s8.lastStall?.kind === "regression");
+	check("8.7 回滚内容 = 恢复最佳轮参数", (s8.pendingRollback?.[0]?.props.intensity as number) === 10);
+
+	// 8.8 指标改善 → 不触发
+	let s8b = createInitialState();
+	s8b = onAssessLighting(s8b, [needs("a", 1)], "x", undefined, q(10, 16));
+	s8b = onAssessLighting(s8b, [needs("a", 1)], "x", undefined, q(8, 14)); // 变好
+	check("8.8 指标改善 → 不触发", s8b.pendingRollback === null && s8b.rollbackCount === 0);
+
+	// 8.9 阈值内小波动 → 不触发
+	let s8c = createInitialState();
+	s8c = onAssessLighting(s8c, [needs("a", 1)], "x", undefined, q(10, 16));
+	s8c = onAssessLighting(s8c, [needs("a", 1)], "x", undefined, q(14, 20)); // lum +4 < 15
+	check("8.9 小波动 → 不触发", s8c.pendingRollback === null);
+
+	// 8.10-8.11 二次回归 → 强制推进
+	recordWrite(s8, "DL", "intensity", 5, 3, "properties");
+	s8 = onAssessLighting(s8, [needs("a", 1)], "x", undefined, q(30, 22)); // 新基线后再次回归
+	check("8.10 二次回归 → 强制推进 tier2", s8.tier === 2, `tier=${s8.tier}`);
+	check("8.11 推进后 rollbackCount 清零", s8.rollbackCount === 0);
 
 	console.log("\n" + "=".repeat(60));
 	console.log(`结果: ${PASS} ${passed}  ${FAIL} ${failed}`);

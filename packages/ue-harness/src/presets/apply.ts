@@ -28,11 +28,11 @@ export async function applyPreset(caller: UeToolCaller, entry: PresetEntry): Pro
 
 	for (const [actorKey, actor] of Object.entries(entry.actors)) {
 		try {
-			// 第一阶段: DirectionalLight 旋转
+			// 第一阶段: DirectionalLight 旋转 (实机 schema: 参数名是 xform)
 			if (actor.transform) {
 				const tResult = await caller.callTool(setTransformName, {
 					actor: { refPath: actor.refPath },
-					transform: actor.transform,
+					xform: actor.transform,
 				});
 				if (tResult.isError) {
 					skipped[actorKey] = `set_actor_transform failed: ${tResult.text.substring(0, 100)}`;
@@ -45,9 +45,10 @@ export async function applyPreset(caller: UeToolCaller, entry: PresetEntry): Pro
 				const propCount = Object.keys(props).length;
 				if (propCount === 0) continue;
 
+				// 实机 schema: set_properties 只接受 values JSON 字符串
 				const result = await caller.callTool(setPropsName, {
 					instance: { refPath: actor.refPath },
-					properties: props,
+					values: JSON.stringify(props),
 				});
 
 				if (result.isError) {
