@@ -35,9 +35,10 @@ LLM (Pi) ←→ ue-harness extension ←→ UE MCP Server (:8000)
 | `src/tools/assess-lighting.ts` | **009b**: `assess_lighting` — 串行架构（Stage1 定量+标签并行, Stage2 Vision 决策） |
 | `src/tools/map-atmosphere.ts` | **004**: `map_atmosphere` — 场景氛围组件扫描 |
 | `src/tools/atmosphere-whitelist.ts` | 氛围属性 whitelist + Tier 映射 |
-| `src/workflow/phase-machine.ts` | **009c**: Phase 状态机 — tier 轮数追踪, bestRound, 定量快照 |
-| `src/workflow/injections.ts` | **009c**: `before_agent_start` 注入 — analysis summary, 趋势, 收尾提示, 预设匹配 |
-| `src/workflow/guard-rules.ts` | **009d**: `tool_call` 拦截 — 硬上限, Phase/Tier 门控（artificiality/further 已移除） |
+| `src/workflow/tiers.ts` | **012**: Tier 注册表 — `TIER_ORDER` 单一数据源, resolveTier, nextTier, extractWriteTarget, 渲染 |
+| `src/workflow/phase-machine.ts` | **009c+012**: Phase 状态机 — tier 轮数追踪, bestRound, 停滞检测, 回滚 |
+| `src/workflow/injections.ts` | **009c+012**: `before_agent_start` 注入 — analysis summary, 趋势, 收尾提示, 预设匹配, 停滞提示 |
+| `src/workflow/guard-rules.ts` | **009d+012**: `tool_call` 拦截 — 硬上限, Phase/Tier 门控（调 tiers.ts resolveTier） |
 | `src/presets/` | **008**: 预设系统（types, store, capture, match, apply, tools） |
 
 ---
@@ -53,10 +54,12 @@ LLM (Pi) ←→ ue-harness extension ←→ UE MCP Server (:8000)
 | 005 | 工作流编排 — Phase 状态机 + Tier 门控 | ✅ 已完成（已在 009 重写） |
 | 008 | 预设系统 — 标签分析 + 快照 + 匹配 + 应用 | ✅ 已完成（116 tests） |
 | 009 | `assess_lighting` 串行化重构 + 定量扩容 + Vision 角色重定义 | ✅ 已完成（48 tests） |
-| 010 | 实际 UE 场景验证 + Prompt smoke test | ⬜ 下一个 |
+| 010 | 实际 UE 场景验证 + Prompt smoke test | ⬜ 待做（含实机 smoke test） |
+| 011 | 预设混合检索 — ONNX Embedding + BM25 + RRF 融合 | ✅ 已完成 |
+| 012 | Tier 停滞收敛 + 回滚 + 方向 tier（tiers.ts 数据驱动） | ✅ 核心完成，回归检测待做 |
 
 **完整 PRD**：[docs/ue-harness-extension-prd.md](docs/ue-harness-extension-prd.md)
-**最近 handoff**：[docs/handoff/0811-issue-009-redesign.md](docs/handoff/0811-issue-009-redesign.md)
+**最近 handoff**：[docs/handoff/0814-issue-012-tier-convergence.md](docs/handoff/0814-issue-012-tier-convergence.md)
 **Issue 009 PRD**：[docs/issue/009/009-assess-lighting-redesign.md](docs/issue/009/009-assess-lighting-redesign.md)
 
 ---
@@ -152,7 +155,7 @@ node --import tsx packages/ue-harness/test/compile-schemas.ts
 |------|------|
 | 完整 PRD | [docs/ue-harness-extension-prd.md](docs/ue-harness-extension-prd.md) |
 | Issue 009 PRD | [docs/issue/009/009-assess-lighting-redesign.md](docs/issue/009/009-assess-lighting-redesign.md) |
-| 最近 Handoff | [docs/handoff/0811-issue-009-redesign.md](docs/handoff/0811-issue-009-redesign.md) |
+| 最近 Handoff | [docs/handoff/0814-issue-012-tier-convergence.md](docs/handoff/0814-issue-012-tier-convergence.md) |
 | Bug 记录 | [docs/bug-notes/](docs/bug-notes/) |
 | AGENTS.md（全局规则） | [AGENTS.md](AGENTS.md) |
 

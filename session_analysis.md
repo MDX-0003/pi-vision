@@ -1,438 +1,444 @@
 # Pi Session Analysis: Lighting Tuning Process
 
-**Source:** `pi-session-2026-08-11T10-02-05-257Z_019ff045-aa49-7c33-bcbe-d1a1cee3c8e9.html` | **Entries:** 112 | **Iterations:** 16
+**Source:** `pi-session-2026-08-13T08-12-10-057Z_019ffa2d-bfc9-77bb-b7c2-7c4aadc923d7.html` | **Entries:** 117 | **Iterations:** 21
 
 ## 1. User Inputs
 
-- **call map_atmosphere and assess_lighting , 匹配参考图的氛围：<E:\Programs\UE_Project_58\MCP\Test\Ref0.png>**
-- **开始**
-- **继续**
-- **可以**
-- **可以保存**
+- **call assess_lighting, call map_atmosphere, 将场景氛围对齐参考图<E:\Programs\UE_Project_58\MCP\Test\Ref0.png>**
 
 ## 2. Quantitative Metrics Trend
 
 | # | Lum Ref | Lum Cur | Delta% | DeltaE Mean | Chroma Ref | Chroma Cur | HueJSD | Highlight RB Ref | Highlight RB Cur |
 |---|---------|---------|--------|-------------|------------|------------|--------|-----------------|-----------------|
-| 1 | 133.3 | 143.1 | 7.3% | 16.8 | 12.4 | 9.4 | 0.153 | 1.386 | 1.051 |
-| 2 | 133.3 | 141.8 | 6.3% | 16.4 | 12.4 | 12.6 | 0.070 | 1.386 | 1.101 |
-| 3 | 133.3 | 144.7 | 8.5% | 17.6 | 12.4 | 14.3 | 0.162 | 1.386 | 1.238 |
-| 4 | 133.3 | 143.4 | 7.6% | 15.9 | 12.4 | 11.3 | 0.114 | 1.386 | 1.171 |
-| 5 | 133.3 | 141.2 | 5.9% | 16.5 | 12.4 | 12.5 | 0.105 | 1.386 | 1.188 |
-| 6 | 133.3 | 144.6 | 8.5% | 18.1 | 12.4 | 15.1 | 0.157 | 1.386 | 1.245 |
-| 7 | 133.3 | 143.4 | 7.6% | 17.4 | 12.4 | 14.1 | 0.145 | 1.386 | 1.226 |
-| 8 | 133.3 | 93 | -30.3% | 22.1 | 12.4 | 13.4 | 0.058 | 1.386 | 1.184 |
-| 9 | 133.3 | 96.6 | -27.6% | 21.6 | 12.4 | 14.5 | 0.081 | 1.386 | 1.218 |
-| 10 | 133.3 | 97.8 | -26.7% | 21.6 | 12.4 | 14.8 | 0.100 | 1.386 | 1.212 |
-| 11 | 133.3 | 107.1 | -19.7% | 19.2 | 12.4 | 14.1 | 0.099 | 1.386 | 1.209 |
-| 12 | 133.3 | 132.4 | -0.7% | 16.8 | 12.4 | 13.9 | 0.127 | 1.386 | 1.200 |
-| 13 | 133.3 | 140.5 | 5.3% | 17.0 | 12.4 | 14.0 | 0.150 | 1.386 | 1.198 |
-| 14 | 133.3 | 142.5 | 6.9% | 16.8 | 12.4 | 13.4 | 0.158 | 1.386 | 1.204 |
-| 15 | 133.3 | 143.9 | 7.9% | 17.1 | 12.4 | 13.6 | 0.151 | 1.386 | 1.219 |
-| 16 | 133.3 | 144.1 | 8.1% | 17.1 | 12.4 | 13.2 | 0.144 | 1.386 | 1.214 |
+| 1 | - | - | - | - | - | - | - | - | - |
+| 2 | 133.3 | 145.7 | 9.3% | 16.0 | 12.4 | 9.0 | 0.355 | 1.386 | 1.299 |
+| 3 | 133.3 | 148.2 | 11.1% | 16.7 | 12.4 | 9.4 | 0.347 | 1.386 | 1.304 |
+| 4 | 133.3 | 143.7 | 7.8% | 16.5 | 12.4 | 9.7 | 0.342 | 1.386 | 1.333 |
+| 5 | 133.3 | 145.8 | 9.3% | 19.8 | 12.4 | 16.4 | 0.580 | 1.386 | 1.466 |
+| 6 | 133.3 | 147.8 | 10.8% | 16.6 | 12.4 | 9.3 | 0.356 | 1.386 | 1.316 |
+| 7 | 133.3 | 148.7 | 11.5% | 18.7 | 12.4 | 13.2 | 0.588 | 1.386 | 1.383 |
+| 8 | 133.3 | 147.9 | 10.9% | 18.8 | 12.4 | 13.5 | 0.588 | 1.386 | 1.394 |
+| 9 | 133.3 | 149.4 | 12% | 19.0 | 12.4 | 13.3 | 0.589 | 1.386 | 1.380 |
+| 10 | 133.3 | 142.9 | 7.2% | 16.9 | 12.4 | 10.7 | 0.508 | 1.386 | 1.363 |
+| 11 | 133.3 | 144.9 | 8.7% | 16.9 | 12.4 | 11.6 | 0.417 | 1.386 | 1.351 |
+| 12 | 133.3 | 146.7 | 10% | 16.8 | 12.4 | 9.5 | 0.341 | 1.386 | 1.329 |
+| 13 | 133.3 | 147.8 | 10.8% | 17.0 | 12.4 | 10.8 | 0.360 | 1.386 | 1.339 |
+| 14 | 133.3 | 96.5 | -27.7% | 21.7 | 12.4 | 12.8 | 0.257 | 1.386 | 0 |
+| 15 | 133.3 | 96.7 | -27.5% | 21.7 | 12.4 | 13.1 | 0.263 | 1.386 | 1.423 |
+| 16 | 133.3 | 98.6 | -26% | 20.8 | 12.4 | 12.7 | 0.259 | 1.386 | 1.449 |
+| 17 | 133.3 | 132.2 | -0.9% | 17 | 12.4 | 12.1 | 0.300 | 1.386 | 1.407 |
+| 18 | 133.3 | 142.5 | 6.9% | 17.3 | 12.4 | 10.8 | 0.261 | 1.386 | 1.361 |
+| 19 | 133.3 | 145.9 | 9.4% | 17.6 | 12.4 | 11 | 0.263 | 1.386 | 1.371 |
+| 20 | 133.3 | 147.6 | 10.7% | 17.8 | 12.4 | 10.7 | 0.278 | 1.386 | 1.341 |
+| 21 | 133.3 | 147 | 10.3% | 18.5 | 12.4 | 12.4 | 0.280 | 1.386 | 1.409 |
 
 ## 3. Aspect Status Per Iteration
 
-| # | atmospheric-haze | brightness | cloud-structure | color-chroma | color-contrast | color-saturation | color-temperature | ground-color | ground-color-contrast | ground-contrast | ground-luminance | ground-saturation | highlight-saturation | highlight-warmth | horizon-contrast | horizon-luminance | horizon-saturation | horizon-tone | overall-atmosphere | overall-brightness | shadow-contrast | shadow-warmth | sky-color-temperature | sky-contrast | sky-gradient | sky-luminance | sky-saturation | sky-warmth | tonal-balance |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | - | OK close_enough(T3) | - | - | - | **FIX** needs_adjustment(T1) | - | - | OK close_enough(T3) | - | - | - | - | - | - | OK close_enough(T2) | - | - | - | - | - | - | **FIX** needs_adjustment(T1) | - | - | - | - | - | - |
-| 2 | - | - | - | - | - | - | - | - | - | - | - | OK close_enough(T3) | - | - | OK close_enough(T3) | - | - | - | - | OK close_enough(T3) | - | OK close_enough(T3) | OK close_enough(T3) | - | OK close_enough(T2) | - | - | - | - |
-| 3 | - | OK close_enough(T3) | OK close_enough(T2) | - | - | - | - | - | - | - | - | OK close_enough(T2) | - | - | **FIX** needs_adjustment(T2) | - | - | - | - | - | - | - | **FIX** needs_adjustment(T2) | - | - | - | - | - | - |
-| 4 | - | OK close_enough(T3) | - | - | OK close_enough(T3) | - | - | - | - | - | - | **FIX** needs_adjustment(T2) | - | - | - | **FIX** needs_adjustment(T2) | - | - | - | - | - | OK close_enough(T3) | - | - | - | - | OK close_enough(T2) | - | - |
-| 5 | - | - | - | - | - | - | OK close_enough(T2) | - | - | - | OK close_enough(T2) | **FIX** needs_adjustment(T2) | - | - | - | - | **FIX** needs_adjustment(T2) | - | - | - | - | - | - | OK close_enough(T2) | - | OK close_enough(T2) | - | - | - |
-| 6 | - | OK close_enough(T3) | - | - | - | - | - | - | - | - | OK close_enough(T3) | - | - | - | - | - | **FIX** needs_adjustment(T2) | - | - | - | - | OK close_enough(T3) | - | - | - | - | **FIX** needs_adjustment(T2) | - | OK close_enough(T3) |
-| 7 | - | OK close_enough(T3) | - | - | OK close_enough(T3) | - | - | - | - | - | - | OK close_enough(T3) | - | - | - | OK close_enough(T3) | - | - | - | - | - | OK close_enough(T3) | - | - | - | - | OK close_enough(T3) | - | - |
-| 8 | - | **FIX** needs_adjustment(T1) | - | - | - | - | - | - | - | - | - | OK close_enough(T1) | - | - | OK close_enough(T1) | - | - | - | - | - | - | - | **FIX** needs_adjustment(T2) | - | - | - | OK close_enough(T2) | - | OK close_enough(T1) |
-| 9 | - | **FIX** needs_adjustment(T3) | - | - | - | **FIX** needs_adjustment(T3) | - | OK close_enough(T1) | - | - | - | - | - | OK close_enough(T1) | - | - | - | - | - | - | - | OK close_enough(T1) | - | - | OK close_enough(T2) | - | - | - | - |
-| 10 | - | **FIX** needs_adjustment(T3) | - | - | - | **FIX** needs_adjustment(T3) | - | - | - | - | - | OK close_enough(T3) | - | - | OK close_enough(T3) | - | - | - | - | - | - | OK close_enough(T1) | OK close_enough(T1) | - | - | - | - | - | - |
-| 11 | - | **FIX** needs_adjustment(T3) | - | - | - | **FIX** needs_adjustment(T3) | - | - | - | **FIX** needs_adjustment(T3) | - | - | - | - | - | - | - | OK close_enough(T2) | - | - | - | - | - | - | - | - | - | OK close_enough(T1) | OK close_enough(T3) |
-| 12 | OK close_enough(T2) | - | - | - | - | - | - | - | - | - | - | OK close_enough(T3) | - | - | - | **FIX** needs_adjustment(T3) | - | - | - | OK close_enough(T3) | **FIX** needs_adjustment(T3) | - | OK close_enough(T3) | - | - | - | - | - | - |
-| 13 | - | OK close_enough(T3) | - | - | - | - | - | - | - | OK close_enough(T3) | - | - | **FIX** needs_adjustment(T3) | - | - | - | - | - | OK close_enough(T3) | - | - | **FIX** needs_adjustment(T3) | - | - | OK close_enough(T3) | - | - | - | - |
-| 14 | - | OK close_enough(T3) | - | - | - | - | - | - | - | - | OK close_enough(T3) | - | - | - | OK close_enough(T3) | - | - | - | - | - | - | OK close_enough(T3) | - | - | - | - | **FIX** needs_adjustment(T3) | - | - |
-| 15 | - | - | - | OK close_enough(T3) | - | - | - | - | - | - | OK close_enough(T3) | - | - | - | - | - | OK close_enough(T3) | - | - | OK close_enough(T3) | - | - | - | - | - | - | **FIX** needs_adjustment(T3) | - | OK close_enough(T3) |
-| 16 | - | OK close_enough(T3) | - | - | - | - | - | - | - | - | OK close_enough(T3) | - | **FIX** needs_adjustment(T3) | - | - | - | - | - | - | - | - | OK close_enough(T3) | - | - | - | - | OK close_enough(T3) | - | OK close_enough(T3) |
+| # | atmospheric-haze | brightness | chroma | color-chroma | color-saturation | global-chroma | global-tonal-balance | gradient-correlation | ground-color | ground-color-temperatu | ground-luminance | ground-saturation | highlight-contrast | highlight-warmth | horizon-contrast | horizon-saturation | shadow-contrast | shadow-warmth | sky-color-temperature | sky-coverage | sky-gradient | sky-hue | sky-luminance | sky-saturation | sky-temperature | sky-warmth | tonal-balance | tonal-balance-shadow | tonal-contrast | tonal-rb |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - | - |
+| 2 | - | OK close_enough(T3) | - | - | - | - | - | - | - | - | - | OK close_enough(T1) | - | - | - | **FIX** needs_adjustment(T1) | - | OK close_enough(T2) | - | - | - | - | - | **FIX** needs_adjustment(T1) | **FIX** needs_adjustment(T1) | - | - | - | - | - |
+| 3 | - | **FIX** needs_adjustment(T1) | - | - | - | - | - | - | - | - | - | OK close_enough(T1) | - | - | OK close_enough(T1) | - | - | - | **FIX** needs_adjustment(T1) | - | - | - | - | OK close_enough(T1) | - | - | - | - | - | - |
+| 4 | - | OK close_enough(T3) | **FIX** needs_adjustment(T1) | - | - | - | - | - | - | - | - | OK close_enough(T2) | - | - | - | - | - | OK close_enough(T3) | - | - | - | - | - | - | - | **FIX** needs_adjustment(T1) | - | - | - | - |
+| 5 | - | OK close_enough(T3) | - | - | **FIX** needs_adjustment(T1) | - | - | - | - | - | - | OK close_enough(T2) | - | - | OK close_enough(T3) | - | - | - | **FIX** needs_adjustment(T1) | - | - | - | - | - | - | - | - | - | - | - |
+| 6 | - | OK close_enough(T3) | - | - | - | - | - | - | - | - | - | OK close_enough(T3) | - | - | - | OK close_enough(T3) | - | OK close_enough(T3) | **FIX** needs_adjustment(T1) | - | - | - | - | - | - | - | - | - | - | - |
+| 7 | - | **FIX** needs_adjustment(T1) | - | - | - | - | - | - | - | - | - | OK close_enough(T1) | - | - | OK close_enough(T1) | - | - | - | **FIX** needs_adjustment(T1) | - | - | - | - | OK close_enough(T1) | - | - | - | - | - | - |
+| 8 | - | **FIX** needs_adjustment(T1) | - | - | - | - | - | - | - | - | - | OK close_enough(T1) | - | - | OK close_enough(T1) | - | - | OK close_enough(T1) | **FIX** needs_adjustment(T1) | - | OK close_enough(T1) | - | - | - | - | - | - | - | - | - |
+| 9 | - | **FIX** needs_adjustment(T1) | - | - | - | - | OK close_enough(T1) | - | - | - | - | OK close_enough(T1) | - | - | OK close_enough(T1) | - | - | - | **FIX** needs_adjustment(T1) | - | - | - | - | OK close_enough(T1) | - | - | - | - | - | - |
+| 10 | - | - | - | - | - | OK close_enough(T2) | - | - | - | - | OK close_enough(T2) | **FIX** needs_adjustment(T2) | - | - | OK close_enough(T1) | - | - | - | OK close_enough(T1) | - | - | - | **FIX** needs_adjustment(T2) | - | - | - | - | - | - | - |
+| 11 | - | OK close_enough(T3) | - | - | - | - | - | - | - | - | - | OK close_enough(T2) | - | - | OK close_enough(T2) | - | - | - | **FIX** needs_adjustment(T2) | OK close_enough(T2) | - | - | - | - | - | - | - | - | - | - |
+| 12 | - | OK close_enough(T3) | **FIX** needs_adjustment(T2) | - | - | - | - | - | - | - | - | **FIX** needs_adjustment(T2) | - | - | - | - | - | OK close_enough(T1) | - | - | - | OK close_enough(T1) | - | - | - | - | - | - | - | - |
+| 13 | - | OK close_enough(T3) | - | OK close_enough(T2) | - | - | - | - | - | - | - | OK close_enough(T2) | OK close_enough(T2) | - | - | - | - | OK close_enough(T1) | - | - | - | OK close_enough(T2) | - | - | - | - | - | - | - | - |
+| 14 | - | **FIX** needs_adjustment(T1) | - | - | - | - | - | OK close_enough(T1) | - | - | - | **FIX** needs_adjustment(T2) | - | - | OK close_enough(T1) | - | - | - | **FIX** needs_adjustment(T2) | - | - | - | - | - | - | - | - | OK close_enough(T1) | - | - |
+| 15 | - | **FIX** needs_adjustment(T3) | - | - | **FIX** needs_adjustment(T3) | - | - | - | - | OK close_enough(T1) | - | - | OK close_enough(T2) | - | - | - | OK close_enough(T2) | - | OK close_enough(T1) | - | - | - | - | - | - | - | - | - | - | - |
+| 16 | - | **FIX** needs_adjustment(T3) | - | - | OK close_enough(T3) | - | - | - | **FIX** needs_adjustment(T3) | - | - | - | - | OK close_enough(T3) | - | - | - | OK close_enough(T3) | - | - | OK close_enough(T3) | - | - | - | - | - | - | - | - | - |
+| 17 | - | OK close_enough(T3) | - | - | - | - | - | - | - | - | - | **FIX** needs_adjustment(T3) | - | - | **FIX** needs_adjustment(T3) | - | - | - | **FIX** needs_adjustment(T3) | - | - | - | - | OK close_enough(T3) | - | - | OK close_enough(T3) | - | - | - |
+| 18 | - | OK close_enough(T3) | - | - | - | - | - | - | - | - | - | **FIX** needs_adjustment(T3) | **FIX** needs_adjustment(T3) | - | - | - | - | OK close_enough(T1) | **FIX** needs_adjustment(T3) | - | - | - | - | - | - | - | - | - | - | - |
+| 19 | - | **FIX** needs_adjustment(T3) | **FIX** needs_adjustment(T3) | - | - | - | - | - | - | - | - | OK close_enough(T3) | - | - | - | OK close_enough(T3) | - | - | - | - | - | - | **FIX** needs_adjustment(T3) | - | - | - | - | - | - | OK close_enough(T3) |
+| 20 | OK close_enough(T2) | OK close_enough(T3) | - | - | **FIX** needs_adjustment(T3) | - | - | - | - | - | - | **FIX** needs_adjustment(T3) | - | - | - | - | - | - | OK close_enough(T1) | - | - | - | - | - | - | - | - | - | OK close_enough(T3) | - |
+| 21 | - | **FIX** needs_adjustment(T3) | - | - | - | - | - | - | - | - | - | OK close_enough(T3) | - | - | **FIX** needs_adjustment(T3) | - | - | - | OK close_enough(T1) | - | - | - | - | OK close_enough(T3) | - | - | OK close_enough(T3) | - | - | - |
 
 ## 4. Action Timeline (What Changed Between Assessments)
 
 ### Iteration 1
-> **Assessment:** 当前光照氛围已基本接近参考图，主要差异在色彩饱和度和天空色温，可通过调整 Tier 1 的光源参数快速优化。全局亮度和对比度的微小偏差属于正常范围，无需过度调参。
-
-- **Analysis:** I'll start by mapping the atmosphere components and then assessing the lighting against the reference image.
+- **Analysis:** I'll start by mapping the atmosphere and assessing the lighting against the reference image.
 - **`map_atmosphere`**
   ```json
   {}
   ```
-- **Analysis:** SETUP 阶段完成。以下是当前场景与参考图的诊断概览：
+- **Analysis:** SETUP 完成。分析诊断结果：
 
-## 诊断结果
+**参考图氛围**：黄昏沙漠，暖金色调、柔和光晕（golden hour / soft light）。
 
-**总体**：光照氛围已基本接近参考图，主要差异在**饱和度和天空色温**。
+**当前场景 vs 参考图的关键差异**：
+- **色温偏冷**（needs_adjustment, Tier1）：当前画面偏冷蓝，参考图天空偏暖紫。`tonalRB` 显示当前 R/B 比（0.54-0.99）远低于参考（1.01-1.39），需要提升红、降蓝。
+- **饱和度偏高**（needs_adjustment, Tier1）：尤其蓝色天空区域。
+- 亮度（close_enough）、地平线饱和（close_enough）、阴影色温（Tier3
+- **`ActorTools.get_actor_transform`**
+  ```json
+  {"actor": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.DirectionalLight_0"}}
+  ```
+- **`ObjectTools.get_properties`**
+  ```json
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.DirectionalLight_0.LightComponent0"}, "properties": ["lightColor", "intensity", "temperature", "bUseTemperature", "channel...
+  ```
+- **`ActorTools.get_actor_transform`**
+  ```json
+  {"actor": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.DirectionalLight_0"}}
+  ```
+- **`ObjectTools.get_properties`**
+  ```json
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.DirectionalLight_0.LightComponent0"}, "properties": ["lightColor", "intensity", "temperature", "bUseTemperature", "specula...
+  ```
+- **Analysis:** Tier1 调整。参考图是暖金色黄昏，当前直射光为中性白（lightColor 1,1,1, bUseTemperature=false, 5500K）。需要让太阳光变暖。
 
-**需要调整的 aspect**：
-1. **color-saturation** (Tier 1) — 当前饱和度偏高，尤其地面和天空。需降低光源饱和。
-2. **sky-color-temperature** (Tier 1) — 当前天空偏冷，参考图偏暖（日出/日落氛围）。需提高 DirectionalLight temperature 或调暖 SkyLight。
+诊断要点：
+- 当前 tonalRB 太低（偏冷蓝），需要提升 R/B 比 → 让受光面偏暖
+- 非直射（阴影）区域方向也是偏冷 → 需 SkyLight 也偏暖一点
 
-**已 close_enough**：brightness、hor
-- **Analysis:** 开始 Tier 1 调参，目标是：降低饱和度 + 增暖色温。
+先调整 DirectionalLight 的 `lightColor` 向暖金色偏移。暖金色大约 R:G:B ≈ 1.0 : 0.85 : 0.65。同时保留较高强度产生金色高光。
 
-我直接批量调整 DirectionalLight 和 SkyLight 属性：
+我用 set_properties 设置 lightColor。
 
-- **DirectionalLight temperature** 6200 → 5400（增暖）
-- **DirectionalLight lightColor** 微降饱和度 (0.92/0.84/0.76) → 更平衡而不过度
-- **SkyLight lightColor** (1/1/1) → 暖色调 (1/0.9/0.8)，降低蓝紫色调
-
-设定 refPaths，用 ObjectTools set_properties 批量修改。
+太
 - **`ObjectTools.set_properties`**
   ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.DirectionalLight_0.LightComponent0"}, "values": "{\"temperature\": 5400, \"intensity\": 0.42, \"lightColor\": {\"r\": 1.0, \...
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.DirectionalLight_0.LightComponent0"}, "values": "{\"lightColor\": {\"r\": 1.0, \"g\": 0.85, \"b\": 0.68, \"a\": 1.0}, \"bU...
   ```
+- **Analysis:** Now let me adjust the SkyLight. Current sky is too blue/cold and saturation too high. Reference wants warm-purple sky. Let me set the sky light color toward warm purple (higher red, moderate blue, lower green) and slightly reduce intensity to lower saturation.
 - **`ObjectTools.set_properties`**
   ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.SkyLight_0.SkyLightComponent0"}, "values": "{\"intensity\": 0.5, \"lightColor\": {\"r\": 1.0, \"g\": 0.92, \"b\": 0.85, \"a\...
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.SkyLight_0.SkyLightComponent0"}, "values": "{\"lightColor\": {\"r\": 1.0, \"g\": 0.85, \"b\": 0.9, \"a\": 1.0}, \"intensit...
   ```
-- **Analysis:** Both light properties updated. Note that `lightColor` in `set_properties` uses 0-1 linear range which is standard for LightColor (this was already 0.92/0.84/0.76 before, so my values are consistent). 
-
-The directional light temperature was raised to 5400 (more warm) and lightColor shifted to warm or
+- **Analysis:** Now let me reassess to check the effect of these Tier1 changes.
 
 ### Iteration 2
-> **Assessment:** 当前光照氛围已基本还原参考图，主要差异源于自动曝光与后期处理，建议在 Tier 3 进行微调，无需继续调整 Tier 1 的光源参数。
+> **Assessment:** 当前画面整体亮度偏高，天空与地平线饱和度不足，色温偏冷，主要可通过调整 Tier 1 的光源参数（SkyLight / DirectionalLight）优化。
 
-- **Analysis:** Excellent progress. The changes made a big impact:
+- **Analysis:** 进展良好。tonalRB 大幅修正（shadow 0.54→0.97，接近参考1.01；midtone 0.73→1.12；highlight 0.99→1.30）。deltaE 降到 16.02，directionFlipped=false。
 
-## 调参结果对比
+但引入了新的问题：**整体色温现在有点过冷反转为太温**？实际是天空饱和度降到 0.0886（参考0.1772），偏低了。诊断反馈：
+- deltaE 16 仍未达标（要 <~8-10）
+- 天空饱和度偏低（0.09 vs 0.18）→ 需增强天空色彩
+- 地平线饱和度偏低（0.13 vs 0.19）
+- 亮度偏高（9.3%）
 
-| 指标 | 修改前 | 修改后 | 参考 | 状态 |
-|------|--------|--------|------|------|
-| chroma(色度) | 9.45 | **12.59** | 12.44 | ✅ 接近 |
-| hueJSD | 0.153 | **0.070** | — | ✅ 显著改善色彩分布 |
-| 中调RB | — | **1.197** | 1.194 | ✅ 完美匹配暖调 |
-| 阴影RB | 0.945 | **1.049**
-- **Analysis:** 进入 Tier 2：ATMOSPHERE（SkyAtmosphere / ExponentialHeightFog / VolumetricCloud）。
-
-根据诊断，Tier 2 相关改善点是 **sky-gradient**（天空渐变平滑度，由大气散射决定）和 **horizon-luminance/contrast**（地平线亮度，由雾效密度决定）。
-
-参考图是有雾的暖调场景。当前数据：
-- 地平线亮度 cur 0.621 vs ref 0.526（偏高）
-- 地平线饱和度 cur 0.155 vs ref 0.186
-
-先映射 Tier 2 全部可调参数。map_atmosphere 
-- **`ObjectTools.list_properties`**
-  ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.SkyAtmosphere_0.SkyAtmosphereComponent"}}
-  ```
-- **Analysis:** Let me read the current values of the key scattering parameters before modifying them.
-- **`ObjectTools.get_properties`**
-  ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.SkyAtmosphere_0.SkyAtmosphereComponent"}, "properties": ["rayleighScatteringScale", "rayleighScattering", "mieScatteringScal...
-  ```
-- **`ObjectTools.get_properties`**
-  ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.ExponentialHeightFog_0.HeightFogComponent0"}, "properties": ["fogInscatteringColor", "fogMaxOpacity", "startDistance", "fogD...
-  ```
-- **Analysis:** The fog reads failed partially. Let me query the fog properties individually with valid names. The `fogInscatteringColor` and `directionalInscatteringColor` might be under different names. Let me list the fog properties.
-- **`ObjectTools.list_properties`**
-  ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.ExponentialHeightFog_0.HeightFogComponent0"}}
-  ```
-- **Analysis:** I now have the full picture of Tier 2 params. Let me analyze the current values vs reference goals:
-
-**Current issues from last assessment (Tier 2 flag):**
-- **sky-gradient** close_enough already but Tier assigned 2 — gradient smoothness by sky scattering
-- **horizon luminance**: ref 0.526 vs cur 0.
-- **`ObjectTools.get_properties`**
-  ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.ExponentialHeightFog_0.HeightFogComponent0"}, "properties": ["fogInscatteringLuminance", "directionalInscatteringLuminance",...
-  ```
-- **Analysis:** Now I have all the values. Let me design the Tier 2 adjustments to match the warm hazy reference.
-
-**Reference atmosphere profile**: warm hazy golden-hour, gentle gradient, atmosphere with haze.
-
-Current fog inscattering is blue-tinted (r0.08/g0.09/b0.12) and blue-tinted directional inscattering (r0
+关于天空饱和度：可能
 - **`ObjectTools.set_properties`**
   ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.SkyAtmosphere_0.SkyAtmosphereComponent"}, "values": "{\"rayleighScatteringScale\": 0.03, \"mieScatteringScale\": 0.0045, \"s...
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.SkyLight_0.SkyLightComponent0"}, "values": "{\"lightColor\": {\"r\": 1.0, \"g\": 0.8, \"b\": 0.75, \"a\": 1.0}}"}
   ```
-- **`ObjectTools.set_properties`**
-  ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.ExponentialHeightFog_0.HeightFogComponent0"}, "values": "{\"fogDensity\": 0.02, \"fogInscatteringLuminance\": {\"r\": 0.10, ...
-  ```
-- **Analysis:** Both applied. Let me reassess the lighting to see the effect of Tier 2 changes.
+- **Analysis:** This changes SkyLight toward warm amber (more saturated). Since the sky/sky region is driven primarily by SkyAtmosphere, and the SkyLight tints indirect light, let me reassess to see current state. The dominant improvement needed now is sky saturation which is Tier2 (SkyAtmosphere). Let me proceed t
 
 ### Iteration 3
-> **Assessment:** 当前光照氛围整体接近参考图，主要差异在天空色温偏暖和地平线对比度不足，可通过调整 SkyAtmosphere 参数解决。全局亮度和饱和度差异主要由后处理系统导致，建议在 Tier 3 完成后处理调校。
+> **Assessment:** 当前光照氛围已基本接近参考图，主要需在 Tier 1 调整 DirectionalLight 和 SkyLight 的 Intensity 与色温，以校准整体亮度与天空色调。地面与地平线的对比度和饱和度差异已微小到肉眼可接受，无需继续调参。
 
-- **Analysis:** The Tier 2 changes overshot. My warm adjustments went too far. Let me analyze:
+- **Analysis:** 现在 Tier1 大部分达标：sky-saturation、ground-saturation、horizon-contrast 都 close_enough。tonalRB 已非常接近参考（diff 均在 0.09 内）。
 
-## 回退分析
+剩余两个 needs_adjustment：
+1. **brightness (+11.1%)** — 建议降 Directional/SkyLight intensity
+2. **sky-color-temperature 偏冷** — 建议调 Light temperature 或 SkyAtmosphere
 
-我上一轮的改动把场景**调得太暖、饱和度过高**：
-
-| 指标 | 上一轮(好) | 这轮 | 参考 | 问题 |
-|------|-----------|------|------|------|
-| sky RB | 1.265 | **1.480** | 1.145 | 天空过暖过饱和 |
-| sky sat | 0.244 | **0.320** | 0.177 | 天空饱和度过高 |
-| chroma | 1
+亮度偏高我通过降 DirectionalLight 
 - **`ObjectTools.set_properties`**
   ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.SkyAtmosphere_0.SkyAtmosphereComponent"}, "values": "{\"rayleighScatteringScale\": 0.033, \"mieScatteringScale\": 0.0039, \"...
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.DirectionalLight_0.LightComponent0"}, "values": "{\"intensity\": 8.5}"}
   ```
-- **`ObjectTools.set_properties`**
-  ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.ExponentialHeightFog_0.HeightFogComponent0"}, "values": "{\"fogInscatteringLuminance\": {\"r\": 0.09, \"g\": 0.09, \"b\": 0....
-  ```
+- **Analysis:** DirectionalLight 的 R/B 比已经到 1.30-检查 midtone 1.13/1.19 (diff -0.06)。基本到位但 sky 色温仍偏冷。天空主要由 SkyAtmosphere 驱动。让我进入 Tier2 调整 SkyAtmosphere 让天空更暖。
+
+SkyAtmosphere skyLuminanceFactor 当前 (0.85, 0.72, 0.65)，这会抑制蓝、加强暖。但 sky 区域在画面中 rbRatio 1.12 vs ref 1.14 已经很接近。诊断说"天空色温偏冷"主要因为天空亮度偏亮（luminance 0.54 vs 0.45）和饱和度
 
 ### Iteration 4
-> **Assessment:** 当前光照氛围已基本接近参考图，主要差异源于自动曝光和后期处理对全局亮度与饱和度的影响。建议优先在 Tier 2 调整大气散射与雾效参数，以优化地面与地平线的视觉表现，后续再微调 Tier 3 的后期参数。
+> **Assessment:** 当前光照氛围已接近参考图，主要差异在天空暖色调与地面饱和度，可通过调整光源色温与饱和度参数解决。全局亮度由自动曝光控制，建议在 Tier 3 微调。
 
-- **Analysis:** Progress but still needs adjustment. Let me compare the three rounds:
+- **Analysis:** 亮度现在 close_enough（Tier3 处理）。tonalRB 高度接近参考：
+- shadow 0.98 vs 1.01 (-0.03)
+- midtone 1.15 vs 1.19 (-0.05)
+- highlight 1.33 vs 1.39 (-0.05)
+- ground_RB 1.32 vs 1.33（完美）
 
-| 指标 | 参考 | R1(T1后,最优) | R3(当前) |
-|------|------|------|------|
-| chroma | 12.44 | **12.59** ✓ | 11.28 |
-| 中调RB | 1.194 | **1.197** ✓ | 1.296 |
-| 阴影RB | 1.010 | **1.049** ✓ | 1.251 |
-| sky RB | 1.145 | 1.265 | 1.343 |
-| sky sat |
+剩余 needs_adjustment：
+1. **chroma/saturation 偏低**（天空 0.12 vs 0.18，地平线 0.13 vs 0.19）→ 需增强色彩饱和度
+2. **sky-warmth 偏冷** → 需更多红色/暖色到天空
+
+Tie
 - **`ObjectTools.set_properties`**
   ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.SkyAtmosphere_0.SkyAtmosphereComponent"}, "values": "{\"rayleighScatteringScale\": 0.032, \"skyLuminanceFactor\": {\"r\": 0....
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.SkyAtmosphere_0.SkyAtmosphereComponent"}, "values": "{\"skyLuminanceFactor\": {\"r\": 0.95, \"g\": 0.7, \"b\": 0.6, \"a\":...
   ```
+- **Analysis:** Tier guard 要求先把 Tier1 的 chroma 和 sky-warmth 解决。这两个虽是 Tier1 判定，但实为光源色彩饱和。让我增强 Tier1 的 DirectionalLight 和 SkyLight 色彩饱和度。
+
+SkyLight 偏向暖紫但整体天空仍偏冷——因为 SkyLight lightColor 我设的是 (1, 0.8, 0.75) 偏暖。让 DirectionalLight 增加红色分量增强整体暖感和饱和度。
+
+当前 DirectionalLight lightColor (1, 0.85, 0.68)。提升饱和：增加红绿差距让色彩更暖饱和。但诊断 ch
 - **`ObjectTools.set_properties`**
   ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.ExponentialHeightFog_0.HeightFogComponent0"}, "values": "{\"fogDensity\": 0.015}"}
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.DirectionalLight_0.LightComponent0"}, "values": "{\"lightColor\": {\"r\": 1.0, \"g\": 0.83, \"b\": 0.6, \"a\": 1.0}}"}
+  ```
+- **Analysis:** Now let me make the SkyLight warmer and more saturated to boost sky warmth/saturation. Set SkyLight toward a warm amber-purple with higher saturation.
+- **`ObjectTools.set_properties`**
+  ```json
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.SkyLight_0.SkyLightComponent0"}, "values": "{\"lightColor\": {\"r\": 1.0, \"g\": 0.75, \"b\": 0.7, \"a\": 1.0}}"}
   ```
 
 ### Iteration 5
-> **Assessment:** 当前光照氛围已基本接近参考图，主要差异在地面与地平线饱和度偏低，建议在 Tier 2 的大气散射与雾效参数中增强色彩表现，其余差异可归因于自动曝光或后期，暂无需继续调参。
+> **Assessment:** 当前光照氛围整体接近参考图，主要差异在饱和度和天空色温，可通过调整 Tier 1 的光源参数解决。全局亮度和对比度差异主要由自动曝光和后期处理导致，建议在后续 Tier 3 阶段微调。
 
-- **Analysis:** Chroma is now matched (12.47 vs 12.44), horizon saturation improved (0.203 vs 0.186), overall closer. But two needs_adjustment remain in Tier 2:
+- **Analysis:** 我往前调过头了。加到 DirectionalLight (1, 0.83, 0.6) 和 Blue 用 skyLuminanceFactor 之前，我现在的颜色让整体太偏暖饱和过度（chroma 16.4 vs 12.4，up 4；deltaE升到19.8）。
 
-1. **ground-saturation** (Tier 2) — 地面饱和度 0.201 偏低 vs ref 0.239
-2. **horizon-saturation** (Tier 2) — 地平线饱和度 0.203 反映，Vision 说 still low
+我过度调了。参考图是中等暖色，不是极度偏暖。我把 DirectionalLight 和 SkyLight 往回调：
 
-Interestingly the
+参考图的 R/B 比（shadow 1.01, midtone 1.19, highlight 1.39）。上一步（DirectionalLight 1,0.85,0.68 + SkyLight 1,0.8,0.75）
 - **`ObjectTools.set_properties`**
   ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.ExponentialHeightFog_0.HeightFogComponent0"}, "values": "{\"fogInscatteringLuminance\": {\"r\": 0.11, \"g\": 0.095, \"b\": 0...
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.DirectionalLight_0.LightComponent0"}, "values": "{\"lightColor\": {\"r\": 1.0, \"g\": 0.85, \"b\": 0.68, \"a\": 1.0}}"}
   ```
-- **Analysis:** Applied a warmer, more saturated fog inscattering to boost ground/horizon saturation without changing sky. Reassessing.
+- **`ObjectTools.set_properties`**
+  ```json
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.SkyLight_0.SkyLightComponent0"}, "values": "{\"lightColor\": {\"r\": 1.0, \"g\": 0.78, \"b\": 0.75, \"a\": 1.0}}"}
+  ```
+- **Analysis:** I'm oscillating. Let me think more systematically.
+
+The best R/B balance was DirectionalLight (1,0.85,0.68) + SkyLight (1,0.8,0.75): tonalRB diffs all <0.09, ground_RB 1.32 vs 1.33. That was close. The remaining issue was **chroma 偏低 (9.66 vs 12.44)** — saturation slightly too low, and sky-warmth sl
 
 ### Iteration 6
-> **Assessment:** 当前画面与参考图在天空饱和度和地平线色彩浓度上存在可调参数可改善的差异，其余主要差异由自动曝光和后期调色导致，建议在Tier 3处理。整体氛围色差（deltaE）已小于肉眼可辨范围，无需过度调参。
+> **Assessment:** 当前光照氛围已接近参考图，主要差异源于天空色温偏冷和后期色彩处理导致的饱和度/阴影色温问题。建议优先在 Tier 1 调整光源色温，再在 Tier 3 微调后期参数以完善色彩层次。
 
-- **Analysis:** I overshot again — the warmer fog inscattering pushed saturation/temperature too high. Now I've gone in a loop: making fog more saturated overshoots warmth/saturation, and neutrally reverting drops ground saturation.
+- **Analysis:** 回到接近点。tonalRB 很好：shadow 0.97 (ref 1.01), midtone 1.12 (1.19), highlight 1.32 (1.39)。ground_RB 1.32 vs 1.33 完美。
 
-Let me step back and think about the **relationship between the levers and the met
+现在评估：
+- **brightness** close_enough (Tier3)
+- **ground-saturation** close_enough (Tier3)
+- **horizon-saturation** close_enough (Tier3)
+- **shadow-warmth** close_enough (Tier3)
+- **sky-colo
 - **`ObjectTools.set_properties`**
   ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.ExponentialHeightFog_0.HeightFogComponent0"}, "values": "{\"fogInscatteringLuminance\": {\"r\": 0.1, \"g\": 0.09, \"b\": 0.0...
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.DirectionalLight_0.LightComponent0"}, "values": "{\"lightColor\": {\"r\": 1.0, \"g\": 0.85, \"b\": 0.64, \"a\": 1.0}}"}
   ```
-- **`ObjectTools.set_properties`**
-  ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.SkyAtmosphere_0.SkyAtmosphereComponent"}, "values": "{\"skyAndAerialPerspectiveLuminanceFactor\": {\"r\": 0.92, \"g\": 0.92,...
-  ```
-- **Analysis:** Wait, I set `skyAndAerialPerspectiveLuminanceFactor` to slightly less than 1 to reduce sky luminance, but I want to be careful. Let me reconsider — I'm changing too many things. Let me reassess to check current state after the moderate warm adjustment.
 
 ### Iteration 7
-> **Assessment:** 当前画面与参考图在光照氛围上已高度接近，主要差异源于后期处理（Tier 3）对亮度、饱和度、色温的微调，而非光源或大气参数（Tier 1/2）的设置。建议在 Tier 3 中进行精细校准以实现最终匹配。
+> **Assessment:** 当前光照氛围已基本接近参考图，主要差异在于整体亮度偏高和天空色温偏暖，建议优先调整 DirectionalLight 和 SkyLight 的 Intensity 与 Temperature 参数。
 
-- **Analysis:** Now **all Tier 2 aspects are close_enough**! The remaining differences (sky-saturation, horizon-luminance, color-contrast, shadow-warmth, ground-saturation, brightness) are all flagged as **Tier 3** items due to PostProcessVolume/auto-exposure.
+- **Analysis:** Excellent progress. tonalRB now excellent:
+- shadow 1.06 (ref 1.01) +0.05
+- midtone 1.21 (ref 1.19) +0.01
+- highlight 1.38 (ref 1.39) -0.00 (perfect)
+- sky rbRatio 1.19 (ref 1.14)
+- horizon rbRatio 1.21 (ref 1.21) perfect
+- **chroma 13.2 vs ref 12.44, diff only 0.76** (close enough, sky saturation f
+- **`ObjectTools.set_properties`**
+  ```json
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.DirectionalLight_0.LightComponent0"}, "values": "{\"intensity\": 7.8}"}
+  ```
+- **Analysis:** Now for the sky temperature being slightly too warm: sky rbRatio 1.19 vs ref 1.14. The DirectionalLight (1, 0.85, 0.64) pulls sky warm. To cool the sky slightly without breaking the excellent ground/midtone/highlight balance, let me raise the Blue component a touch so sky returns toward neutral, and
 
-The moderate warm fog adjustment hit the sweet spot. G
-- **Analysis:** 进入 Tier 3：PostProcessVolume 调色。这个阶段专注调 autoExposureBias、ColorSaturation、WhiteTemp/ColorTemperature、ColorContrast、ColorGamma。
+### Iteration 8
+> **Assessment:** 当前光照氛围已基本接近参考图，主要差异在整体亮度和天空色温，建议优先调整 DirectionalLight 和 SkyLight 的 Intensity 与 Color 参数。其余微小差异可接受，无需过度调参。
 
-剩余差异（全部 Tier 3）：
-- **brightness**: 全局亮度偏高 (deltaPct 7.6%)
-- **sky/horizon saturation**: 偏高 → 需降低 ColorSaturation
-- **shadow-warmth**: directionFlipped → 需校准色温
-- **horizon-lum
+- **Analysis:** 亮度仍偏高（10.9%）。降低 DirectionalLight intensity 从 7.8 没显著降低整体亮度，说明亮度主要由 SkyLight 天光贡献。让我降低 SkyLight intensity。同时 sky 色温偏暖。
+
+参考 tag 现在是 "purple_haze"（暖紫），而参考原 tag 是 golden_hour/soft_light。场景现在偏暖紫，但参考图实际是暖金/粉。sky rbRatio 1.21 vs ref 1.14——略过暖。地平线 rbRatio 1.22 vs 1.21 完美。
+
+处理亮度：SkyLight intensity 从 1 降到 0.8
+- **`ObjectTools.set_properties`**
+  ```json
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.SkyLight_0.SkyLightComponent0"}, "values": "{\"intensity\": 0.85, \"lightColor\": {\"r\": 1.0, \"g\": 0.8, \"b\": 0.8, \"a...
+  ```
+
+### Iteration 9
+> **Assessment:** 当前光照氛围已基本接近参考图，主要差异在于整体亮度偏高和天空色温偏冷，建议优先调整 DirectionalLight 和 SkyLight 的 Intensity 与 Color 参数。其余差异视觉上不明显，可暂不处理。
+
+- **Analysis:** Tonality remains excellent (midtone +0.015, highlight -0.006, ground_RB 1.40 vs 1.33 slightly high). But brightness still stubborn at ~12%. Lowering SkyLight intensity (1→0.85) and DirectionalLight (10→7.8) barely moved luminance (147.9→149.4). This suggests the overhead brightness is driven by auto
+- **`ObjectTools.set_properties`**
+  ```json
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.DirectionalLight_0.LightComponent0"}, "values": "{\"intensity\": 6.5, \"lightColor\": {\"r\": 1.0, \"g\": 0.85, \"b\": 0.6...
+  ```
+
+### Iteration 10
+> **Assessment:** 当前画面整体氛围已接近参考图，主要差异在天空亮度和地面饱和度，可通过调整SkyAtmosphere参数解决。色温与对比度基本对齐，无需过度调参。
+
+- **Analysis:** Now brightness is much better (deltaPct 7.2%, and the reduction finally mattered — confirming auto-exposure had limited headroom. tonalRB now excellent:
+- shadow 1.02 (ref 1.01) +0.009
+- midtone 1.17 (ref 1.19) -0.03
+- highlight 1.36 (ref 1.39) -0.02
+- sky rbRatio 1.12 (ref 1.14)
+- horizon rbRatio 1
+- **`ObjectTools.set_properties`**
+  ```json
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.SkyAtmosphere_0.SkyAtmosphereComponent"}, "values": "{\"rayleighScatteringScale\": 0.026, \"skyLuminanceFactor\": {\"r\": ...
+  ```
+
+### Iteration 11
+> **Assessment:** 当前画面整体光照氛围已接近参考图，主要差异在于天空色温偏暖，可通过调整 SkyAtmosphere 的色温参数解决。其余差异多由自动曝光或材质反射导致，无需在当前 Tier 2 深度调参，建议在 Tier 3 后期调色中微调收尾。
+
+- **Analysis:** Tier2 progress. Now:
+- brightness close_enough (Tier3)
+- ground-saturation close_enough
+- horizon-contrast close_enough
+- sky-coverage close_enough
+- **sky-color-temperature** needs_adjustment (Tier2) — sky slightly too warm now (sky rbRatio 1.19 vs ref 1.14)
+
+The sky is now slightly too warm (from 
+- **`ObjectTools.set_properties`**
+  ```json
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.SkyAtmosphere_0.SkyAtmosphereComponent"}, "values": "{\"skyLuminanceFactor\": {\"r\": 0.86, \"g\": 0.72, \"b\": 0.68, \"a\...
+  ```
+
+### Iteration 12
+> **Assessment:** 当前光照氛围已基本接近参考图，主要差异在色彩饱和度与地面表现，可通过调整Tier 2大气参数解决。亮度与色温差异源于系统自动曝光，视觉上已可接受，无需继续强求像素级一致。
+
+- **Analysis:** I overshot again — sky saturation dropped to 0.10 and chroma dropped. The reference sky rbRatio is 1.1449 and I need to balance sky warmth without killing saturation. I'm swinging between too-warm-high-sat and cool-low-sat.
+
+The fundamental issue: SkyAtmosphere fine tuning interacts heavily. Let me 
+- **`ObjectTools.set_properties`**
+  ```json
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.SkyAtmosphere_0.SkyAtmosphereComponent"}, "values": "{\"rayleighScatteringScale\": 0.026, \"skyLuminanceFactor\": {\"r\": ...
+  ```
+
+### Iteration 13
+> **Assessment:** 当前画面与参考图在光照氛围上已高度接近，主要差异源于自动曝光和大气雾效的细微调整，视觉上无明显瑕疵。建议在 Tier 3 后期微调 autoExposureBias 以实现最终匹配，当前阶段无需继续调整 Tier 1 或 Tier 2 参数。
+
+- **Analysis:** All aspects are now **close_enough** (brightness, color-chroma, sky-hue, ground-saturation, shadow-warmth, highlight-contrast). Tier2 is essentially complete.
+
+The assessment says remaining differences are driven by auto-exposure (Tier3) and atmospheric fog subtlety, with no visual flaws. sky rbRati
+- **`ToolsetRegistry_EditorAppToolset_GetVisibleActors`**
+  ```json
+  {}
+  ```
 - **`SceneTools.find_actors`**
   ```json
   {"tag": "", "glob": "*PostProcess*"}
   ```
-- **Analysis:** There's a PostProcessVolume_1. Let me inspect its current PostProcessSettings properties. The volume likely has a PostProcessSettings sub-object. Let me list its properties.
 - **`ObjectTools.list_properties`**
   ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.PostProcessVolume_1"}}
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.PostProcessVolume_1"}}
   ```
-- **Analysis:** The PostProcessVolume settings are in the `settings` sub-object. To modify them via ObjectTools, I need to set the properties on the `settings` object. But the PostProcessVolume_1 actor's settings property is a sub-object. Let me check whether the volume is enabled and unbound first, then access the
+- **Analysis:** The PostProcessVolume exists. I'm currently at a very good state (all aspects close_enough from the last assessment). The remaining brightness (148 vs 133, ~10%) is due to auto-exposure, which I can tune via `autoExposureBias` in Tier3.
+
+Let me set autoExposureBias to darken slightly. The luminance 
 - **`ObjectTools.get_properties`**
   ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.PostProcessVolume_1"}, "properties": ["bEnabled", "bUnbound", "priority", "blendWeight"]}
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.PostProcessVolume_1"}, "properties": ["autoExposureBias", "bOverride_AutoExposureBias", "autoExposureMethod", "bOverride_A...
   ```
-- **Analysis:** The volume is enabled and unbound with blendWeight 1. Now let me look at the current PostProcessSettings values. The settings object should have its own refPath. Let me get the settings sub-object refPath by querying the volume's `settings` property.
-
-Let me get the current PP settings by querying v
+- **Analysis:** These are on the nested `settings` sub-object. Let me query on the settings object path.
 - **`ObjectTools.get_properties`**
   ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.PostProcessVolume_1"}, "properties": ["settings.bOverride_ColorSaturation", "settings.bOverride_ColorContrast", "settings.bO...
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.PostProcessVolume_1.Settings"}, "properties": ["autoExposureBias", "bOverride_AutoExposureBias", "autoExposureMethod", "bO...
   ```
-- **Analysis:** Nested property paths aren't supported here. I need the settings sub-object's own refPath. In UE level instances, the PostProcessSettings is an inline struct, not a separate object. 
-
-Let me check how the toolset exposes instanced sub-objects. According to the `set_properties` doc: "For instanced su
-- **`ActorTools.get_components`**
-  ```json
-  {"actor": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.PostProcessVolume_1"}}
-  ```
-- **Analysis:** The volume only has a BrushComponent0; the PostProcessSettings isn't a separate component object. The `settings` is an inline `PostProcessSettings` struct on the volume actor. 
-
-Let me check the programmatic execution environment to see how to modify nested struct properties, since the ObjectTools n
-- **`Programmatic.get_execution_environment`**
-  ```json
-  {}
-  ```
-- **Analysis:** The ObjectTools `set_properties` supports setting nested instanced sub-object properties by passing a class path. But the PostProcessSettings is an inline struct, so I need another approach.
-
-Let me try using `set_properties` with the `settings` property on the volume object, providing it as a neste
-- **`ObjectTools.set_properties`**
-  ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.PostProcessVolume_1"}, "values": "{\"settings\": {\"bOverride_ColorSaturation\": true, \"bOverride_AutoExposureBias\": true,...
-  ```
-- **Analysis:** That worked — the nested `settings` struct can be set as a JSON object. Let me verify by reading back the settings to confirm the override flags took effect.
+- **Analysis:** Let me check the PostProcessVolume_1's bEnabled and bUnbound on the actor, and try setting autoExposureBias via the actor (which may route to settings). Let me first check the actor-level properties.
 - **`ObjectTools.get_properties`**
   ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.PostProcessVolume_1"}, "properties": ["settings"]}
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.PostProcessVolume_1"}, "properties": ["bEnabled", "bUnbound", "priority", "blendWeight"]}
   ```
-- **Analysis:** Now I have the full PostProcess settings. This volume already has a lot of custom global grading. Let me capture the key settings relevant to Tier 3 tuning:
-
-**Current PP settings (relevant):**
-- `whiteTemp` 6500, `whiteTint` 0.08
-- `colorSaturation` (1,1,1,1) — neutral
-- `colorContrast` (1,1,1,1)
--
+- **Analysis:** The PostProcessVolume is enabled and unbound. The settings properties need a valid object path. Let me try the settings refPath via the toolset's set_properties with the settings as an instanced sub-object. The MCP error earlier said the refPath was invalid. Let me check the components of the volume
 - **`ObjectTools.set_properties`**
   ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.PostProcessVolume_1"}, "values": "{\"settings\": {\"bOverride_ColorSaturation\": true, \"bOverride_AutoExposureBias\": true,...
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.PostProcessVolume_1"}, "values": "{\"settings\": {\"bOverride_AutoExposureBias\": true, \"autoExposureBias\": -0.15}}"}
   ```
-- **Analysis:** Applied. Now reassess to see the effect of the first Tier 3 tuning pass.
-
-### Iteration 8
-> **Assessment:** 当前画面整体偏冷偏暗，主要需在 Tier 1 调整 DirectionalLight 强度与色温，并在 Tier 2 优化天空散射与云层色彩，以匹配参考图的温暖黄昏氛围。地面与地平线的视觉差异主要由几何结构不同导致，非光照参数问题。
-
-- **Analysis:** The `autoExposureBias -0.2` had a huge effect — system went way too dark (luminance 93 vs 133, -30%). The auto-exposure histogram clamp is very sensitive. The `whiteTemp 6200` also may have cooled things. This overshot badly.
-
-Key problem: `autoExposureBias` in UE with histogram auto-exposure isn't 
-- **`ObjectTools.set_properties`**
-  ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.PostProcessVolume_1"}, "values": "{\"settings\": {\"bOverride_AutoExposureBias\": true, \"bOverride_WhiteTemp\": true, \"aut...
-  ```
-- **Analysis:** Reverted autoExposureBias to 0 and whiteTemp to 6500, keeping colorSaturation at a mild 0.95. Reassess.
-
-### Iteration 9
-> **Assessment:** 当前画面整体偏暗、偏饱和，主要可通过PostProcessVolume的亮度和饱和度参数快速调整。阴影与高光色温的不一致问题根因在光源设置，建议在Tier 1完成光源调校后再进行后期微调。
-
-- **Analysis:** The scene is still far too dark (96.6 vs 133, -27.6%) even though I set autoExposureBias back to 0 and whiteTemp to 6500. This means something else I changed is causing the darkening. 
-
-The `colorSaturation 0.95` shouldn't darken it that much. The `whiteTemp 6500` also shouldn't. Wait — I originally
 - **`ObjectTools.get_properties`**
   ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.PostProcessVolume_1"}, "properties": ["settings.autoExposureBias", "settings.whiteTemp", "settings.colorSaturation"]}
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.PostProcessVolume_1"}, "properties": ["settings"]}
   ```
-- **Analysis:** Nested paths don't read via get_properties (only set works). Let me read the whole settings object to verify the current values are what I expect.
-- **`ObjectTools.get_properties`**
-  ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.PostProcessVolume_1"}, "properties": ["settings"]}
-  ```
-- **Analysis:** The settings are exactly as intended: autoExposureBias 0, whiteTemp 6500, colorSaturation (0.95,0.95,0.95,1). So the darkening is **not** from the PP settings — it's the **auto-exposure adaptation lag** (AEM_Histogram with AutoExposureSpeedDown=1.0, quite slow). After my aggressive -0.2 bias dropped
-
-### Iteration 10
-> **Assessment:** 当前画面整体偏暗、偏饱和，主要可通过调整PostProcessVolume的曝光和饱和度参数快速接近参考图氛围。色温与阴影方向已基本匹配，无需在Tier 1或Tier 2进行大调整。
-
-- **Analysis:** The scene is still ~27% too dark and too saturated. The auto-exposure hasn't recovered even after 30+ seconds. This suggests my `autoExposureBias` change didn't just create lag — the -0.2 bias from round 8 permanently shifted the exposure baseline, and reverting to 0 didn't restore it. But readings 
-- **`ObjectTools.set_properties`**
-  ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.PostProcessVolume_1"}, "values": "{\"settings\": {\"bOverride_AutoExposureBias\": true, \"autoExposureBias\": 0.3}}"}
-  ```
-- **Analysis:** Set autoExposureBias to +0.3 to recover brightness. Reassess.
-
-### Iteration 11
-> **Assessment:** 当前画面整体偏暗、饱和度偏低，可通过Tier 3后期参数快速优化；天空色温与地平线过渡等氛围细节需在Tier 1/Tier 2完成基础光照后，再进行微调。
-
-- **Analysis:** The +0.3 bias recovered some brightness (97 → 107, now -19.7%). It's still dark but progressing. This exposure system is clearly very sensitive per-stop; each ~0.1 bias ≈ 5-8% luminance.
-
-Let me track the autoExposureBias response:
-- bias 0 (after my disturbance): luminance 97, -27%
-- bias +0.3: lum
-- **`ObjectTools.set_properties`**
-  ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.PostProcessVolume_1"}, "values": "{\"settings\": {\"bOverride_AutoExposureBias\": false}}"}
-  ```
-- **Analysis:** Restored `bOverride_AutoExposureBias = false` to revert to the original exposure behavior. Reassess.
-
-### Iteration 12
-> **Assessment:** 当前画面与参考图在色温、亮度、饱和度上已高度接近，主要差异集中在地平线亮度与阴影对比度，可通过 PostProcessVolume 微调解决，大气雾感需在 Tier 2 优化。
-
-- **Analysis:** Restoring `bOverride_AutoExposureBias = false` fixed the brightness. The exposure is now back to auto, giving luminance 132.4 (-0.7% ≈ perfect match). 
-
-This confirms the diagnosis: my earlier exploration of `autoExposureBias` had unsettled the exposure, and restoring the override to false returned 
-- **`ObjectTools.set_properties`**
-  ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.PostProcessVolume_1"}, "values": "{\"settings\": {\"bOverride_ColorGainShadows\": true, \"bOverride_ColorSaturationShadows\"...
-  ```
-
-### Iteration 13
-> **Assessment:** 当前画面与参考图在阴影色温、高光饱和度上存在可调差异，主要受后期处理影响，建议在Tier 3微调后处理参数即可达到满意效果，无需再调整光源或大气系统。
-
-- **Analysis:** Interesting — my shadow cooling change actually **increased** shadow RB (1.34 → 1.39) rather than decreasing it. The `colorSaturationShadows`/`colorGainShadows` with boosted blue (z) reading may not be applied as expected, or the shadow definition (colorCorrectionShadowsMax=0.09) means most pixels a
-- **`ObjectTools.set_properties`**
-  ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.PostProcessVolume_1"}, "values": "{\"settings\": {\"bOverride_ColorGainShadows\": true, \"bOverride_ColorSaturationShadows\"...
-  ```
-- **Analysis:** Reverted the shadow grading to its original values since my change made it worse. Rather than complicate further with regional grading that doesn't respond predictably, I should finalize the Tier 3 state by confirming the best overall result.
-
-Let me do a final assessment to confirm the reverted (be
+- **Analysis:** The autoExposureBias is set to -0.15 with override enabled. The PostProcessVolume already has an existing color grading profile (whiteTemp 6500, warm shadows/highlights settings) but note: **the SETUP assessment steps reset PostProcess to defaults** — yet these settings show non-default values (whit
 
 ### Iteration 14
-> **Assessment:** 当前光照氛围已非常接近参考图，主要差异在天空饱和度略高，可通过PostProcessVolume微调。其余差异由auto-exposure和后期调色系统导致，视觉上已无明显不适，建议保持当前设置。
+> **Assessment:** 当前画面整体偏暗、偏冷，地面饱和度不足，主要根因在 Tier 1 的光源强度和 Tier 2 的大气散射参数。建议优先调整主光源强度和天空色温，再优化地面饱和度与雾气效果。
 
-- **Analysis:** Now the scene is at a strong final state:
-
-## Tier 3 完成 — 最终评估
-
-**Overall**: "光照氛围已非常接近参考图...视觉上已无明显不适，建议保持当前设置。"
-
-| aspect | 状态 | 指标 |
-|--------|------|------|
-| brightness | close_enough | -6.9% (auto-exposure) |
-| shadow-warmth | close_enough | directionFlipped 但视觉可接受 |
-| sky-saturation | needs_a
+- **Analysis:** That's too strong — the -0.15 bias overreacted (luminance dropped to 96.5, -27.7%, too dark). The auto-exposure bias is very sensitive in this scene. Let me reduce it to a much smaller value. Given -0.15 dropped ~50 units (148→96), a target of ~140 would need roughly -0.025. But the response is non-
 - **`ObjectTools.set_properties`**
   ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.PostProcessVolume_1"}, "values": "{\"settings\": {\"bOverride_ColorSaturationHighlights\": true, \"colorSaturationHighlights...
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.PostProcessVolume_1"}, "values": "{\"settings\": {\"autoExposureBias\": -0.03}}"}
   ```
-- **Analysis:** Applied reduced highlight saturation to target the sky. Reassess to confirm.
 
 ### Iteration 15
-> **Assessment:** 当前画面整体光照氛围已与参考图高度接近，主要差异在天空饱和度偏高，建议在Tier 3统一调整colorSaturation后即可收尾，无需继续深入调参。
+> **Assessment:** 当前画面整体偏暗、色彩饱和度不足，主要可通过PostProcessVolume的autoExposureBias和colorSaturation快速优化。天空与地面色温不一致、阴影高光对比度问题需在Tier 1或Tier 2调整基础光照与大气参数，当前Tier 3仅能微调，不宜过度依赖后期处理。
 
-- **Analysis:** Sky saturation dropped slightly (0.302 → 0.296) but still reads 0.296 vs ref 0.177. The `colorSaturationHighlights` reduction only helped marginally. The sky saturation in this scene is fundamentally higher than the reference due to the scene's sky content (the reference is a hazy muted sky; the cur
+- **Analysis:** The bias change from -0.15 to -0.03 didn't alter the luminance much (still 96.7). This suggests the setting isn't taking effect as expected — the very first -0.15 drop was likely a transient/instability, or the auto-exposure plus the reduced DirectionalLight intensity (6.5) combined is now dark. The
 - **`ObjectTools.set_properties`**
   ```json
-  {"instance": {"refPath": "/Game/0728-Snapshot.0728-Snapshot:PersistentLevel.PostProcessVolume_1"}, "values": "{\"settings\": {\"bOverride_ColorSaturation\": true, \"colorSaturation\": {\"x\": 0.92, \"...
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.PostProcessVolume_1"}, "values": "{\"settings\": {\"autoExposureBias\": 0}}"}
   ```
-- **Analysis:** Set global colorSaturation 0.95 → 0.92 (mild trim) per Vision's recommendation. Reassess.
 
 ### Iteration 16
-> **Assessment:** 当前画面与参考图的感知色差已小于肉眼可分辨范围（deltaE=17.08），主要差异由后期处理参数导致，建议在Tier 3微调曝光、饱和度和色温曲线以匹配氛围，无需继续调整光源参数。
+> **Assessment:** 当前画面整体偏暗、地面饱和度不足，主要可通过PostProcessVolume的亮度和饱和度参数快速优化。天空与阴影的色温差异微小，肉眼可接受，建议优先调整Tier 3参数以快速逼近参考图氛围。
 
-- **Analysis:** Chroma improved (13.17 vs 12.44, gap only 0.73), sky saturation improved (0.285 vs 0.177), and the overall confirms: "感知色差已小于肉眼可分辨范围（deltaE=17.08）...建议在 Tier 3 微调...无需继续调整光源参数."
-
-Only **highlight-saturation** remains flagged (and Vision's own note on it says the cause is post-processing, echoing the
-- **`list_presets`**
+- **Analysis:** The scene is stuck dark at ~98 now, and midtone R/B jumped to 1.48 (was 1.17 previously). Something drifted. My earlier light reductions (DirectionalLight 6.5, SkyLight 0.85) plus SkyAtmosphere changes + PostProcess modified the scene more than I tracked. The scene is now too dark (-26%) and colors 
+- **`ObjectTools.get_properties`**
   ```json
-  {}
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.DirectionalLight_0.LightComponent0"}, "properties": ["lightColor", "intensity"]}
   ```
-- **`save_preset`**
+- **`ObjectTools.get_properties`**
   ```json
-  {"name": "golden-hour-hazy-landscape"}
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.SkyLight_0.SkyLightComponent0"}, "properties": ["lightColor", "intensity"]}
   ```
-- **Analysis:** 预设已保存：**`golden-hour-hazy-landscape`**
+- **Analysis:** Current values match what should give the "all close" state. The issue is the PostProcess autoExposure. The `autoExposureApplyPhysicalCameraExposure=true` with cameraShutterSpeed=60, ISO=100 means exposure is physically determined and may have shifted.
 
-包含 2 个 actor 的快照（DirectionalLight + SkyLight 等氛围组件），覆盖 Tier 1/2/3 的全部调参结果。
+The most reliable correction: the auto-exposur
+- **`ObjectTools.set_properties`**
+  ```json
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.PostProcessVolume_1"}, "values": "{\"settings\": {\"bOverride_AutoExposureBias\": false, \"autoExposureBias\": 0}}"}
+  ```
 
-后续如需复用此氛围，直接 `load_preset("golden-hour-hazy-landscape")` 即可，加载后 `_activeReferencePath` 会自动指向本次截图为参考基准。
+### Iteration 17
+> **Assessment:** 当前光照氛围已非常接近参考图，主要差异在天空色温偏冷和地面饱和度偏低，建议在 Tier 3 的 PostProcessVolume 中微调色温与饱和度即可完成优化。
 
-调参流程已全部完成（Tier 1→2→3），场景氛围高度匹配参考图的暖色黄昏雾景效果。
+- **Analysis:** Excellent! Restoring `bOverride_AutoExposureBias=false` brought back luminance 132.2 (deltaPct -0.9%, essentially perfect). The scene is now:
+- **brightness** close_enough (-0.9%)
+- **sky-saturation** close_enough
+- **tonal-balance** close_enough (shadow +0.06, midtone +0.07, highlight +0.02)
+- delt
+- **`ObjectTools.set_properties`**
+  ```json
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.SkyAtmosphere_0.SkyAtmosphereComponent"}, "values": "{\"skyLuminanceFactor\": {\"r\": 0.86, \"g\": 0.72, \"b\": 0.66, \"a\...
+  ```
+
+### Iteration 18
+> **Assessment:** 当前画面整体氛围已接近参考图，主要差异集中在天空色温偏冷、地面饱和度不足、高光对比度偏低。建议在Tier 3的后期处理中微调白平衡、饱和度和对比度参数，无需再调整光照源。
+
+- **Analysis:** The sky cool-down improved tonal balance a lot: shadow 1.00 (ref 1.01, -0.008), midtone 1.18 (ref 1.19, -0.017), highlight 1.36 (ref 1.39, -0.025). These are excellent. But now:
+- sky rbRatio 1.20 (ref 1.14) — slightly warm
+- sky saturation dropped to 0.146
+- horizon saturation 0.147 (ref 0.186) — s
+- **`ObjectTools.set_properties`**
+  ```json
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.PostProcessVolume_1"}, "values": "{\"settings\": {\"colorSaturation\": {\"x\": 1.07, \"y\": 1.07, \"z\": 1.05, \"w\": 1}}}...
+  ```
+
+### Iteration 19
+> **Assessment:** 当前画面整体亮度偏高、饱和度偏低，氛围略显平淡，主要可通过PostProcessVolume的autoExposureBias和colorSaturation进行微调。其余光照参数已基本匹配，无需在当前Tier继续调整。
+
+- **Analysis:** The saturation boost didn't help much (sky sat 0.133, chroma -1.45). The scene is saturated about right but the assessment regressed brightness to +9.4%. The `colorSaturation` increase (1.07) made things brighter/lighter overall rather than more saturated because sky is the dominant area and it's br
+- **`ObjectTools.set_properties`**
+  ```json
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.PostProcessVolume_1"}, "values": "{\"settings\": {\"colorSaturation\": {\"x\": 1.0, \"y\": 1.0, \"z\": 1.0, \"w\": 1}}}"}
+  ```
+- **Analysis:** Now, to address the persistent brightness slightly-high and saturation slightly-low without unbalancing, the cleanest lever that actually worked was the autoExposureBias override but it's over-sensitive with physical camera. Rather than fight it, let me accept the current excellent state and do a fi
+
+### Iteration 20
+> **Assessment:** 当前画面整体光照氛围已非常接近参考图，主要差异在色彩饱和度和局部亮度平衡。建议优先在Tier 3微调PostProcessVolume的饱和度和曝光，其余氛围参数可留待后续Tier 1/2优化。
+
+- **Analysis:** The scene has reached a good, stable state. tonal-RB balance remains excellent:
+- shadow 1.00 (ref 1.01, -0.007)
+- midtone 1.16 (ref 1.19, -0.036)
+- highlight 1.34 (ref 1.39, -0.044)
+- ground_RB 1.33 (ref 1.33, essentially perfect!)
+
+Regional saturations: ground 0.208 (ref 0.239), sky 0.138 (ref 0.1
+- **`ObjectTools.set_properties`**
+  ```json
+  {"instance": {"refPath": "/Game/0728-Snapshot1.0728-Snapshot1:PersistentLevel.PostProcessVolume_1"}, "values": "{\"settings\": {\"colorSaturation\": {\"x\": 1.15, \"y\": 1.15, \"z\": 1.12, \"w\": 1}}}...
+  ```
+
+### Iteration 21
+> **Assessment:** 当前画面与参考图在整体亮度和地平线对比度上存在可调差异，主要可通过PostProcessVolume的autoExposureBias和colorContrast进行微调。其余光照氛围维度已非常接近，无需继续深入调整。
+
+- **Analysis:** Excellent progress on saturation. The colorSaturation 1.15 worked:
+- **chroma 12.43 vs ref 12.44, diff -0.01** (perfect)
+- **ground saturation 0.238 vs ref 0.239** (perfect)
+- sky saturation 0.157 (ref 0.177), horizon 0.164 (ref 0.186) — much closer now
+- ground_RB 1.41 (ref 1.33)
+- tonal-RB balance
 
 ## 5. Convergence Analysis
 
@@ -440,77 +446,81 @@ Only **highlight-saturation** remains flagged (and Vision's own note on it says 
 
 | Aspect | Converged at Iteration |
 |--------|----------------------|
-| atmospheric-haze | 12 |
-| brightness | 1 |
-| cloud-structure | 3 |
-| color-chroma | 15 |
-| color-contrast | 4 |
-| color-saturation | Never |
-| color-temperature | 5 |
-| ground-color | 9 |
-| ground-color-contrast | 1 |
-| ground-contrast | 13 |
-| ground-luminance | 5 |
+| atmospheric-haze | 20 |
+| brightness | 2 |
+| chroma | Never |
+| color-chroma | 13 |
+| color-saturation | 16 |
+| global-chroma | 10 |
+| global-tonal-balance | 9 |
+| gradient-correlation | 14 |
+| ground-color | Never |
+| ground-color-temperature | 15 |
+| ground-luminance | 10 |
 | ground-saturation | 2 |
-| highlight-saturation | Never |
-| highlight-warmth | 9 |
-| horizon-contrast | 2 |
-| horizon-luminance | 1 |
-| horizon-saturation | 15 |
-| horizon-tone | 11 |
-| overall-atmosphere | 13 |
-| overall-brightness | 2 |
-| shadow-contrast | Never |
+| highlight-contrast | 13 |
+| highlight-warmth | 16 |
+| horizon-contrast | 3 |
+| horizon-saturation | 6 |
+| shadow-contrast | 15 |
 | shadow-warmth | 2 |
-| sky-color-temperature | 2 |
-| sky-contrast | 5 |
-| sky-gradient | 2 |
-| sky-luminance | 5 |
-| sky-saturation | 4 |
-| sky-warmth | 11 |
-| tonal-balance | 6 |
+| sky-color-temperature | 10 |
+| sky-coverage | 11 |
+| sky-gradient | 8 |
+| sky-hue | 12 |
+| sky-luminance | Never |
+| sky-saturation | 3 |
+| sky-temperature | Never |
+| sky-warmth | Never |
+| tonal-balance | 17 |
+| tonal-balance-shadow | 14 |
+| tonal-contrast | 20 |
+| tonal-rb | 19 |
 
 ### Close-Enough Count Per Iteration
 
-- **Iter 1:** [############--------] 3/5 aspects close_enough
-- **Iter 2:** [####################] 6/6 aspects close_enough
+- **Iter 2:** [##########----------] 3/6 aspects close_enough
 - **Iter 3:** [############--------] 3/5 aspects close_enough
-- **Iter 4:** [#############-------] 4/6 aspects close_enough
-- **Iter 5:** [#############-------] 4/6 aspects close_enough
-- **Iter 6:** [#############-------] 4/6 aspects close_enough
-- **Iter 7:** [####################] 6/6 aspects close_enough
+- **Iter 4:** [############--------] 3/5 aspects close_enough
+- **Iter 5:** [############--------] 3/5 aspects close_enough
+- **Iter 6:** [################----] 4/5 aspects close_enough
+- **Iter 7:** [############--------] 3/5 aspects close_enough
 - **Iter 8:** [#############-------] 4/6 aspects close_enough
 - **Iter 9:** [#############-------] 4/6 aspects close_enough
 - **Iter 10:** [#############-------] 4/6 aspects close_enough
-- **Iter 11:** [##########----------] 3/6 aspects close_enough
-- **Iter 12:** [#############-------] 4/6 aspects close_enough
-- **Iter 13:** [#############-------] 4/6 aspects close_enough
-- **Iter 14:** [################----] 4/5 aspects close_enough
-- **Iter 15:** [################----] 5/6 aspects close_enough
-- **Iter 16:** [################----] 5/6 aspects close_enough
+- **Iter 11:** [################----] 4/5 aspects close_enough
+- **Iter 12:** [############--------] 3/5 aspects close_enough
+- **Iter 13:** [####################] 6/6 aspects close_enough
+- **Iter 14:** [##########----------] 3/6 aspects close_enough
+- **Iter 15:** [#############-------] 4/6 aspects close_enough
+- **Iter 16:** [#############-------] 4/6 aspects close_enough
+- **Iter 17:** [##########----------] 3/6 aspects close_enough
+- **Iter 18:** [########------------] 2/5 aspects close_enough
+- **Iter 19:** [##########----------] 3/6 aspects close_enough
+- **Iter 20:** [#############-------] 4/6 aspects close_enough
+- **Iter 21:** [#############-------] 4/6 aspects close_enough
 
 ## 6. Tool Call Frequency
 
 | Tool | Count |
 |------|-------|
-| `ObjectTools.set_properties` | 20 |
+| `ObjectTools.set_properties` | 24 |
 | `ObjectTools.get_properties` | 8 |
-| `ObjectTools.list_properties` | 3 |
+| `ActorTools.get_actor_transform` | 2 |
 | `map_atmosphere` | 1 |
+| `ToolsetRegistry_EditorAppToolset_GetVisibleActors` | 1 |
 | `SceneTools.find_actors` | 1 |
-| `ActorTools.get_components` | 1 |
-| `Programmatic.get_execution_environment` | 1 |
-| `list_presets` | 1 |
-| `save_preset` | 1 |
+| `ObjectTools.list_properties` | 1 |
 
 ## 7. Key Insights
 
 *(Auto-extracted patterns — review and refine)*
 
-- **Total property changes:** 20 `set_properties` calls
+- **Total property changes:** 24 `set_properties` calls
 - **Total actor lookups:** 1 `find_actors` calls
-- **Total assess_lighting iterations:** 16
-- **Final state:** 5/6 aspects close_enough
-- **Never converged:** color-saturation, highlight-saturation, shadow-contrast
-- **Overshoot detected at iter 8:** DeltaE 17.4 -> 22.1 (+27%)
-- **Brightness crash at iter 8:** Luminance 143 -> 93 (-35%)
+- **Total assess_lighting iterations:** 21
+- **Final state:** 4/6 aspects close_enough
+- **Never converged:** chroma, ground-color, sky-luminance, sky-temperature, sky-warmth
+- **Overshoot detected at iter 5:** DeltaE 16.5 -> 19.8 (+20%)
+- **Overshoot detected at iter 14:** DeltaE 17.0 -> 21.7 (+28%)
+- **Brightness crash at iter 14:** Luminance 148 -> 96 (-35%)
