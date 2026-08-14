@@ -138,7 +138,7 @@ async function main() {
 				const setR = await ue.callTool(SET_TRANSFORM, { actor: { refPath: dlActor }, xform: testTf });
 				const backR = await ue.callTool(GET_TRANSFORM, { actor: { refPath: dlActor } });
 				const backYaw = ((parseValue(backR.text) as Record<string, unknown>)?.rotation as Record<string, unknown>)?.yaw;
-				const ok = !setR.isError && backYaw === origYaw + 1;
+				const ok = !setR.isError && typeof backYaw === "number" && Math.abs(backYaw - (origYaw + 1)) < 1e-6;
 				console.log(`${ok ? "✓" : "✗"}   transform 写回生效: yaw ${origYaw} → ${origYaw + 1} → 读回 ${backYaw}`);
 				await ue.callTool(SET_TRANSFORM, { actor: { refPath: dlActor }, xform: tf });
 				console.log(`${DIAG}   restored yaw → ${origYaw}`);
@@ -157,19 +157,20 @@ async function main() {
 		if (settings && typeof settings === "object") {
 			const keys = Object.keys(settings);
 			console.log(`${DIAG}   settings struct 字段 (前 20): ${keys.slice(0, 20).join(", ")}`);
-			console.log(`${DIAG}   WhiteTemp=${settings.WhiteTemp} bOverride_WhiteTemp=${settings.bOverride_WhiteTemp} (检查 PascalCase)`);
-			const origWhiteTemp = settings.WhiteTemp as number | undefined;
+			// 实机验证: 值字段小写 camelCase (whiteTemp), bOverride 标志 PascalCase (bOverride_WhiteTemp)
+			console.log(`${DIAG}   whiteTemp=${settings.whiteTemp} bOverride_WhiteTemp=${settings.bOverride_WhiteTemp}`);
+			const origWhiteTemp = settings.whiteTemp as number | undefined;
 			if (typeof origWhiteTemp === "number") {
-				const testSettings = { ...settings, WhiteTemp: origWhiteTemp + 10, bOverride_WhiteTemp: true };
+				const testSettings = { ...settings, whiteTemp: origWhiteTemp + 10, bOverride_WhiteTemp: true };
 				const setR = await ue.callTool(SET_PROPS, { instance: { refPath: ppvPath }, values: JSON.stringify({ settings: testSettings }) });
 				const backR = await ue.callTool(GET_PROPS, { instance: { refPath: ppvPath }, properties: ["settings"] });
-				const back = ((parseValue(backR.text) as Record<string, unknown>)?.settings as Record<string, unknown>)?.WhiteTemp;
+				const back = ((parseValue(backR.text) as Record<string, unknown>)?.settings as Record<string, unknown>)?.whiteTemp;
 				const ok = !setR.isError && back === origWhiteTemp + 10;
-				console.log(`${ok ? "✓" : "✗"}   values 写回生效: WhiteTemp ${origWhiteTemp} → ${origWhiteTemp + 10} → 读回 ${back}`);
+				console.log(`${ok ? "✓" : "✗"}   values 写回生效: whiteTemp ${origWhiteTemp} → ${origWhiteTemp + 10} → 读回 ${back}`);
 				await ue.callTool(SET_PROPS, { instance: { refPath: ppvPath }, values: JSON.stringify({ settings }) });
 				console.log(`${DIAG}   restored settings`);
 			} else {
-				console.log(`${DIAG}   ✗ WhiteTemp 读取失败 (字段名大小写?)`);
+				console.log(`${DIAG}   ✗ whiteTemp 读取失败 (值字段应为小写 camelCase)`);
 			}
 		} else {
 			console.log(`${DIAG}   ✗ settings 读取失败 (properties: ["settings"] 是否返回 struct?) [raw: ${getR.text.slice(0, 150)}]`);

@@ -54,7 +54,17 @@ set_actor_transform({ actor: { refPath }, xform: tf })
 3. `test/rollback-diag.ts`（诊断脚本）同步修正
 4. 更新 memory: `set-properties-param-convention`（推翻旧约定）、`ppv-set-properties-struct`（values 是唯一通道）
 
+## 补充：PPV settings 字段名大小写（2026-08-14 同一 session 发现）
+
+`get_properties(["settings"])` 返回的 struct 中：
+- **值字段为小写 camelCase**：`whiteTemp`（6500）、`colorSaturation`、`filmSlope`、`autoExposureBias`
+- **FVector4 为小写**：`{x,y,z,w}`（不是 {X,Y,Z,W}）
+- **bOverride 标志保持 PascalCase**：`bOverride_WhiteTemp`
+
+写错大小写（如 `WhiteTemp`）**静默无效**（set 返回成功、值不生效）。`resetPostProcessToDefaults`（assess-lighting.ts）曾用 PascalCase 值字段 + `{X,Y,Z,W}`，已修复为小写。
+
 ## 经验
 
 - 写 UE 的代码必须对照实机 `tools/list` 的 schema，不要依赖 PRD/记忆中的参数名
-- 实机 smoke test 是写路径正确性的唯一裁判——本次发现 008d 的 apply 从未生效
+- 实机 smoke test 是写路径正确性的唯一裁判——本次发现 008d 的 apply 从未生效、PPV 重置从未真正生效
+- struct 字段名大小写只能通过实机读写验证，不可假设 PascalCase

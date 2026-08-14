@@ -156,30 +156,33 @@ async function resetPostProcessToDefaults(caller: UeToolCaller): Promise<void> {
 		}
 
 		// Step 3: 修改 color grading 参数 + bOverride 标志
+		// 实机验证 (2026-08-14): 值字段为小写 camelCase (whiteTemp, colorSaturation...),
+		// FVector4 为小写 {x,y,z,w}; bOverride 标志保持 PascalCase (bOverride_WhiteTemp)。
+		// 旧写法 (WhiteTemp / {X,Y,Z,W}) 写入被 UE 静默忽略 (不报错、不生效)。
 		const modified = { ...settingsObj };
 		// 色温
 		modified["bOverride_WhiteTemp"] = true;
-		modified["WhiteTemp"] = 6500;
+		modified["whiteTemp"] = 6500;
 		// 饱和度 (FVector4)
 		modified["bOverride_ColorSaturation"] = true;
-		modified["ColorSaturation"] = { X: 1, Y: 1, Z: 1, W: 1 };
+		modified["colorSaturation"] = { x: 1, y: 1, z: 1, w: 1 };
 		// 对比度
 		modified["bOverride_ColorContrast"] = true;
-		modified["ColorContrast"] = { X: 1, Y: 1, Z: 1, W: 1 };
+		modified["colorContrast"] = { x: 1, y: 1, z: 1, w: 1 };
 		// 伽马
 		modified["bOverride_ColorGamma"] = true;
-		modified["ColorGamma"] = { X: 1, Y: 1, Z: 1, W: 1 };
+		modified["colorGamma"] = { x: 1, y: 1, z: 1, w: 1 };
 		// 胶片色调映射
 		modified["bOverride_FilmSlope"] = true;
-		modified["FilmSlope"] = 0.88;
+		modified["filmSlope"] = 0.88;
 		modified["bOverride_FilmToe"] = true;
-		modified["FilmToe"] = 0.55;
+		modified["filmToe"] = 0.55;
 		// 色散
 		modified["bOverride_SceneFringeIntensity"] = true;
-		modified["SceneFringeIntensity"] = 0;
+		modified["sceneFringeIntensity"] = 0;
 		// 调色混合
 		modified["bOverride_ColorGradingIntensity"] = true;
-		modified["ColorGradingIntensity"] = 1;
+		modified["colorGradingIntensity"] = 1;
 
 		// Step 4: 以 values JSON 字符串写回 (非 properties object!)
 		const setResult = await caller.callTool(SET_PROPS, {
