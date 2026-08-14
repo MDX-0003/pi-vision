@@ -1,0 +1,34 @@
+[2] assess: brightness=needs_adjustment(T2), chroma=needs_adjustment(T2), shadow_warmth=close_enough(T3), highlight_tonal_balance=close_enough(T3), ground_saturation=close_enough(T4)
+  overall: 当前光照氛围整体偏亮偏灰，主因是DirectionalLight强度或色温过高，导致饱和度不足；高光与阴影的色温平衡已基本达标，建议优先在Tier 2调整光源参数，再辅以Tier 3/4的后期微调以匹配参考图的黄昏氛围。
+[5] assess: brightness=close_enough(T3), color-saturation=needs_adjustment(T2), sky-color-temperature=close_enough(T3), ground-reflection=close_enough(T3), horizon-contrast=close_enough(T3)
+  overall: 当前光照氛围已基本接近参考图，主要差异在于色彩饱和度偏高和全局亮度略高，根因主要在后期处理和大气系统，建议在 Tier 2 微调光源色温/强度后，再进入 Tier 3 优化后期与大气参数。
+[7] assess: brightness=needs_adjustment(T2), chroma=needs_adjustment(T2), ground-saturation=close_enough(T3), sky-luminance=close_enough(T3), horizon-contrast=close_enough(T3)
+  overall: 当前光照氛围整体偏亮、偏饱和，主要根因在 DirectionalLight 和 SkyLight 的强度与色温参数，建议优先调整 Tier 2 参数。地面与天空的饱和度及亮度差异已部分由大气系统主导，后续需在 Tier 3 优化。
+[9] assess: brightness=needs_adjustment(T2), chroma=needs_adjustment(T2), shadow_warmth=close_enough(T3), highlight_warmth=close_enough(T3), ground_saturation=close_enough(T3), sky_luminance=close_enough(T3)
+  overall: 当前画面整体亮度和饱和度偏高，主要由DirectionalLight和SkyLight参数设置过强导致，建议优先调整Tier 2参数。其余色温与饱和度差异主要受大气和后期影响，需在Tier 3处理。
+[12] assess: brightness=needs_adjustment(T2), chroma=needs_adjustment(T2), shadow-warmth=close_enough(T3), ground-saturation=close_enough(T3), sky-saturation=close_enough(T3), tone-balance=close_enough(T3)
+  overall: 当前画面整体亮度和饱和度偏高，主要由DirectionalLight和SkyLight参数设置过强导致，建议在Tier 2中下调强度与饱和度。阴影和天空的色温与饱和度差异主要由大气和后期影响，当前阶段无需继续调参，可进入Tier 3或后期处理阶段优化。
+[14] assess: brightness=needs_adjustment(T2), chroma=needs_adjustment(T2), ground-saturation=needs_adjustment(T2), horizon-saturation=needs_adjustment(T2), sky-luminance=close_enough(T3), shadow-warmth=close_enough(T3)
+  overall: 当前画面在整体亮度和饱和度上明显偏高，主要可通过调整DirectionalLight和SkyLight的强度与色温解决。天空和阴影的色温差异由大气系统主导，建议在更高层级处理。
+[17] assess: brightness=needs_adjustment(T2), color-temperature=needs_adjustment(T2), shadow-warmth=close_enough(T3), ground-saturation=close_enough(T2), sky-luminance=close_enough(T3)
+  overall: 当前画面整体偏亮偏冷，主要差异源于DirectionalLight和SkyLight的强度与色温设置，建议优先调整Tier 2参数。阴影和天空的色温偏差及饱和度差异已超出当前调参层级，需在更高Tier处理。
+  UE-NOTES: [ue-harness] 检测到停滞，已回滚 2/2 个 actor 到历史最佳参数。
+[20] assess: brightness=needs_adjustment(T3), color-saturation=needs_adjustment(T3), sky-color-temperature=close_enough(T3), ground-color-contrast=close_enough(T3), horizon-color-temperature=close_enough(T3)
+  overall: 当前画面整体亮度和饱和度偏高，氛围更“刺眼”，但色温与对比度的差异主要由后期处理或大气散射导致，当前Tier 3调参可优化亮度与饱和度，但色温与对比度需在Tier 2/4处理。
+[24] assess: brightness=close_enough(T3), color-saturation=needs_adjustment(T3), sky-color-temperature=close_enough(T3), ground-color-temperature=close_enough(T3), shadow-contrast=close_enough(T3), highlight-contrast=close_enough(T3)
+  overall: 当前画面与参考图在亮度和饱和度上存在可调参数可改善的差异，但视觉氛围整体已高度接近。建议优先在Tier 3调整大气散射和雾效参数，而非继续调整光源。
+[26] assess: brightness=needs_adjustment(T3), ground-saturation=needs_adjustment(T3), sky-saturation=close_enough(T3), horizon-luminance=close_enough(T3), tonal-rb-shadow=close_enough(T3), gradient-correlation=close_enough(T3)
+  overall: 当前画面整体光照氛围已非常接近参考图，主要差异在全局亮度和地面饱和度，可通过调整SkyAtmosphere或ExponentialHeightFog参数优化。视觉上色差已小于肉眼可分辨范围，无需过度调参。
+[28] assess: brightness=close_enough(T3), ground-saturation=needs_adjustment(T3), sky-saturation=close_enough(T3), tonal-balance=close_enough(T3), color-contrast=close_enough(T3)
+  overall: 当前光照氛围整体已接近参考图，主要差异在地面饱和度偏高和全局亮度略高，均属Tier 3大气系统可调范围。由于存在后期调色影响，部分色温与对比度差异建议在更高层级处理，当前阶段无需过度调参。
+[30] assess: brightness=close_enough(T3), shadow-warmth=close_enough(T3), ground-saturation=needs_adjustment(T3), sky-saturation=close_enough(T3), horizon-luminance=close_enough(T3)
+  overall: 当前画面整体光照氛围已接近参考图，主要差异在地面饱和度偏高，建议在Tier 3中微调大气散射或材质色相，其余差异由后期或自动曝光导致，无需继续调参。
+  UE-NOTES: [ue-harness] 检测到停滞，已回滚 1/1 个 actor 到历史最佳参数。
+[43] assess: brightness=needs_adjustment(T4), shadow_warmth=needs_adjustment(T4), highlight_coolness=needs_adjustment(T4), chroma_saturation=needs_adjustment(T4), sky_color_balance=close_enough(T3), ground_color_balance=close_enough(T3)
+  overall: 当前画面整体偏暗、偏冷，色彩饱和度不足，主要可通过 PostProcessVolume 的 autoExposureBias、whiteTemp 和 colorSaturation 调整快速接近参考图氛围，但天空与地面的色温平衡需在 Tier 3 进一步优化。
+[45] assess: brightness=needs_adjustment(T4), shadow-warmth=close_enough(T3), highlight-saturation=needs_adjustment(T4), ground-color-temperature=close_enough(T2), sky-saturation=close_enough(T3), tonal-balance=close_enough(T3)
+  overall: 当前画面整体偏暗、饱和度不足，但色温与大气效果已接近参考图，主要差异可通过 PostProcessVolume 的亮度与饱和度参数快速优化，建议优先调整 Tier 4 参数。
+[47] assess: brightness=close_enough(T4), shadow-warmth=needs_adjustment(T4), highlight-coolness=needs_adjustment(T4), ground-saturation=needs_adjustment(T4), sky-saturation=close_enough(T4), horizon-contrast=close_enough(T4)
+  overall: 当前画面与参考图在阴影色温、高光冷暖、地面饱和度上存在可调的后期差异，建议优先在PostProcessVolume中调整whiteTemp和colorSaturation；其余差异由大气与曝光系统导致，需在更高层级调参后评估。
+[48] assess: brightness=close_enough(T4), shadow-warmth=needs_adjustment(T4), highlight-coolness=needs_adjustment(T4), ground-saturation=close_enough(T4), sky-saturation=close_enough(T4), color-contrast=close_enough(T4)
+  overall: 当前光照氛围已非常接近参考图，主要差异在阴影与高光的色温平衡，可通过PostProcessVolume微调whiteTemp解决。整体调参已到收尾阶段，建议优先处理Tier 3大气参数以获得更自然的全局光感。
