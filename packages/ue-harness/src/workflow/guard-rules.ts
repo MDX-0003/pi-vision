@@ -62,6 +62,19 @@ export function checkToolCall(
 		}
 	}
 
+	// ── 脚本直连通道: 禁止 (Issue 012 review) ──
+	// execute_tool_script 内嵌的工具调用对 guard 与 changeJournal 完全不可见:
+	// 脚本写的参数不进 journal → 停滞/回归回滚无法恢复; tier 门控失效。
+	// 调参任务的所有写必须走受控的 set_properties / set_actor_transform。
+	if (toolName.includes("execute_tool_script")) {
+		return {
+			block: true,
+			reason:
+				"禁止用 execute_tool_script 直连写 UE 参数：脚本内嵌的工具调用不经过 tier 门控与回滚 journal。" +
+				"请使用 set_properties / set_actor_transform 等受控工具。",
+		};
+	}
+
 	// ── Phase 门控 ──
 
 	// SETUP: 禁止任何写工具调用

@@ -75,6 +75,11 @@ function buildCurrentTierInfo(tier: number, tierRoundCount: number): string {
 
 // ── SETUP PostProcess 重置 ──
 
+const PPV_FIND_ACTORS = "toolset_registry.toolsets.core.scene.SceneTools.find_actors";
+const PPV_GET_PROPS = "toolset_registry.toolsets.core.object.ObjectTools.get_properties";
+const PPV_SET_PROPS = "toolset_registry.toolsets.core.object.ObjectTools.set_properties";
+const PPV_ADD_ACTOR = "toolset_registry.toolsets.core.scene.SceneTools.add_to_scene_from_class";
+
 function parseUeReturnValue(text: string): unknown {
 	try {
 		const outer = JSON.parse(text);
@@ -112,30 +117,67 @@ function extractActorRefPaths(parsed: unknown): string[] {
  * 参考: E:/Programs/UE_Project_58/MCP/Test/ppv_test2.py
  *       E:/Programs/UE_Project_58/MCP/Test/test_ppv_direct.py
  */
+/**
+ * 确保场景中存在 PostProcessVolume (Tier 4 调参依赖它)。
+ * 场景无 PPV 时自动创建 (add_to_scene_from_class) 并设为 bUnbound (作用于全场景)。
+ * 返回可用的 PPV refPath 列表 (空 = 创建失败或查找失败)。
+ *
+ * 背景 (2026-08-14 session review): 场景无 PPV 时 LLM 只能自己 add_to_scene_from_class,
+ * 该工具不受 guard 白名单约束、创建结果也不进 journal — 由扩展代为创建更可控。
+ */
+export async function ensurePostProcessVolume(caller: UeToolCaller): Promise<string[]> {
+	// 1) 查找现有 PPV
+	const findResult = await caller.callTool(PPV_FIND_ACTORS, { glob: "*PostProcessVolume*", tag: "" });
+	if (!findResult.isError) {
+		const paths = extractActorRefPaths(parseUeReturnValue(findResult.text));
+		if (paths.length > 0) return paths;
+	}
+
+	// 2) 无 PPV → 创建一个
+	console.log("[ue-harness] ensurePostProcessVolume: no PostProcessVolume in scene, creating one...");
+	const addResult = await caller.callTool(PPV_ADD_ACTOR, {
+		actor_type: { refPath: "/Script/Engine.PostProcessVolume" },
+		name: "PP_AtmosphereTune",
+		xform: { location: { x: 0, y: 0, z: 0 } },
+	});
+	if (addResult.isError) {
+		console.error(
+			"[ue-harness] ensurePostProcessVolume: add_to_scene_from_class failed: " + addResult.text.slice(0, 120),
+		);
+		return [];
+	}
+	const refPath = (parseUeReturnValue(addResult.text) as { refPath?: string } | null)?.refPath;
+	if (!refPath) {
+		console.error("[ue-harness] ensurePostProcessVolume: add returned no refPath: " + addResult.text.slice(0, 120));
+		return [];
+	}
+
+	// 3) 新 PPV 默认只影响体积内 → 设 bUnbound 使其作用于全场景
+	const unboundResult = await caller.callTool(PPV_SET_PROPS, {
+		instance: { refPath },
+		values: JSON.stringify({ bUnbound: true }),
+	});
+	if (unboundResult.isError) {
+		console.error("[ue-harness] ensurePostProcessVolume: set bUnbound failed: " + unboundResult.text.slice(0, 120));
+	} else {
+		console.log("[ue-harness] ensurePostProcessVolume: created " + refPath + " (bUnbound)");
+	}
+	return [refPath];
+}
+
 async function resetPostProcessToDefaults(caller: UeToolCaller): Promise<void> {
-	const GET_PROPS = "toolset_registry.toolsets.core.object.ObjectTools.get_properties";
-	const SET_PROPS = "toolset_registry.toolsets.core.object.ObjectTools.set_properties";
-	const FIND_ACTORS = "toolset_registry.toolsets.core.scene.SceneTools.find_actors";
-
-	// Step 1: 查找所有 PostProcessVolume actor
-	const findResult = await caller.callTool(FIND_ACTORS, { glob: "*PostProcessVolume*", tag: "" });
-	if (findResult.isError) {
-		console.log("[ue-harness] resetPostProcess: find_actors failed, skipping");
-		return;
-	}
-
-	const parsed = parseUeReturnValue(findResult.text);
-	const actorRefPaths = extractActorRefPaths(parsed);
+	// Step 1: 查找 PPV; 场景无 PPV 时自动创建 (Tier 4 需要)
+	const actorRefPaths = await ensurePostProcessVolume(caller);
 	if (actorRefPaths.length === 0) {
-		console.log("[ue-harness] resetPostProcess: no PostProcessVolume found, skipping");
+		console.log("[ue-harness] resetPostProcess: no PostProcessVolume available, skipping (Tier 4 将不可调)");
 		return;
 	}
 
-	console.log(`[ue-harness] resetPostProcess: resetting ${actorRefPaths.length} PostProcessVolume(s)`);
+	console.log("[ue-harness] resetPostProcess: resetting " + actorRefPaths.length + " PostProcessVolume(s)");
 
 	for (const refPath of actorRefPaths) {
 		// Step 2: 读取完整的 settings struct
-		const getResult = await caller.callTool(GET_PROPS, {
+		const getResult = await caller.callTool(PPV_GET_PROPS, {
 			instance: { refPath },
 			properties: ["settings"],
 		});
@@ -185,7 +227,7 @@ async function resetPostProcessToDefaults(caller: UeToolCaller): Promise<void> {
 		modified["colorGradingIntensity"] = 1;
 
 		// Step 4: 以 values JSON 字符串写回 (非 properties object!)
-		const setResult = await caller.callTool(SET_PROPS, {
+		const setResult = await caller.callTool(PPV_SET_PROPS, {
 			instance: { refPath },
 			values: JSON.stringify({ settings: modified }),
 		});

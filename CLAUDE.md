@@ -212,6 +212,7 @@ Memory 示例：
 | 2026-08-11 | 009: PRD 工具名错误 `ToolsetRegistry.SceneTools...` → 实际为 `toolset_registry.toolsets.core.scene.SceneTools...` | 已修正 PRD §7.5；工具名均为 snake_case 小写 |
 | 2026-08-11 | 009: PRD `set_properties` 参数一度被误判为 `{ properties: {...} }` | **2026-08-14 实机推翻该修正**：本 UE build 的 set_properties 只有 `values`（JSON 字符串）通道，原 PRD 的 `{ values: JSON.stringify(...) }` 才是对的 |
 | 2026-08-14 | 实机验证: `set_properties` 只有 values 通道（无 properties 参数）；`set_actor_transform` 参数名是 `xform`（rotation 小写 pitch/yaw/roll） | apply.ts 与旧 applyRollback 写路径从未在实机生效；已修复 [docs/bug-notes/ue-mcp-set-params-schema.md](docs/bug-notes/ue-mcp-set-params-schema.md)；memory: set-properties-param-convention 已重写 |
+| 2026-08-14 | session review: LLM 用 `execute_tool_script` 绕过 tier 门控与 journal 完成 PPV 调参；MCP 文本错误被 isError=false 吞掉把 LLM 推向后门；场景无 PPV 时 LLM 只能自己建 | guard block execute_tool_script；classifyResultText 识别文本错误；ensurePostProcessVolume 自动创建 PPV（memory: execute-tool-script-bypass） |
 
 **这是教训区的起点。** 后续发现任何 bug 或踩坑经验，按 §7 的规范同时更新：
 1. 在 `docs/bug-notes/` 写完整 bug 报告

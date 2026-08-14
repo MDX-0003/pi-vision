@@ -23,7 +23,7 @@ const PHASE_TEMPLATES: Record<string, (s: PhaseState) => string> = {
   2. 调 assess_lighting(reference_path) 对比参考图，了解每个维度的差距
 
 禁止在 SETUP 阶段直接调参或截图——这些操作会被自动阻止。
-PostProcess 参数会在首次 assess_lighting 时自动重置到默认值。
+PostProcess 参数会在首次 assess_lighting 时自动重置到默认值；若场景无 PostProcessVolume 会自动创建。
 `,
 
 	TUNING: (s) => `

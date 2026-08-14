@@ -51,6 +51,44 @@ function classifyError(err: unknown): McpCallResult {
 	return { text: msg, isError: true, errorType };
 }
 
+/**
+ * Issue 012 review: UE MCP 有时把错误作为"成功"结果返回
+ * (SDK 层 isError=false, 但 text 含错误标记, 如 "[server_error] Parameter error: ...")。
+ * 扩展必须识别这些文本标记, 否则 journal 会把失败写记成成功。
+ *
+ * 已观察到的格式 (2026-08-14 session):
+ *   [server_error] Parameter error: <path> is not valid Object for property 'instance'.
+ *   [unknown] MCP error -32000: Connection closed
+ *   [timeout] request exceeded 60000ms
+ *
+ * 返回 { isError: true, errorType } 表示 text 携带错误; 否则 { isError: false }。
+ */
+export function classifyResultText(text: string): { isError: boolean; errorType?: McpCallResult["errorType"] } {
+	const trimmed = text.trim();
+	if (trimmed === "") return { isError: false };
+
+	// 带 [errorType] 前缀
+	const m = trimmed.match(/^\[(server_error|validation_error|tool_not_found|timeout|unknown)\]\s*(.*)$/);
+	if (m) {
+		let errorType = m[1] as McpCallResult["errorType"];
+		const body = m[2];
+		// UE 用 [server_error] 前缀包装参数错误 — 实为校验错误, 不应触发重连重试
+		if (/Parameter error/i.test(body)) {
+			errorType = "validation_error";
+		} else if (/MCP error -32000|connection closed/i.test(body)) {
+			// [unknown] MCP error -32000: Connection closed — 连接层错误, 应触发重连
+			errorType = "server_error";
+		}
+		return { isError: true, errorType };
+	}
+
+	// 无前缀但明显是错误文本
+	if (/^Parameter error:/i.test(trimmed)) return { isError: true, errorType: "validation_error" };
+	if (/^MCP error -32000:/i.test(trimmed)) return { isError: true, errorType: "server_error" };
+
+	return { isError: false };
+}
+
 // ── UeClient 类 ──
 
 export class UeClient  implements UeToolCaller {
@@ -171,9 +209,14 @@ export class UeClient  implements UeToolCaller {
 
 			const text = extractText(result.content);
 
-			// 检查 UE 侧错误
-			if (result.isError) {
-				return { text, isError: true, errorType: "server_error" };
+			// 检查 UE 侧错误: SDK isError 或文本错误标记 (见 classifyResultText)
+			const classified = classifyResultText(text);
+			if (result.isError || classified.isError) {
+				return {
+					text,
+					isError: true,
+					errorType: result.isError ? "server_error" : classified.errorType,
+				};
 			}
 
 			return { text, isError: false };
