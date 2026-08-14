@@ -1,9 +1,17 @@
 # Issue 012 — 回归检测 + 回滚通道修复
 
-**状态**: Draft（计划按此开发）
+**状态**: Active（2026-08-14 开工，方向决策已确认）
 **前置**: Issue 012 核心已完成（commit `ac0dbc7db` + `96129369a`）——停滞检测三信号 / 写前读 journal / 回滚 / 方向 tier
 **Handoff**: [docs/handoff/0814-issue-012-tier-convergence.md](../../handoff/0814-issue-012-tier-convergence.md)（含审阅补充 §4.4 / §4.5）
 **来源**: 代码审阅 handoff 后的修改意见（2026-08-14，用户确认按此开发）
+
+## 已确认的方向决策（2026-08-14）
+
+| 决策 | 结论 | 影响 |
+|---|---|---|
+| 回归触发后的动作 | **回滚后留在本 tier 重试一次**：回归视为「一笔误操作」而非「阶段调不出来」。每 tier 回滚次数上限 1，第二次回归才强制推进 | 子任务 3 重写：regression 独立于 detectStall，不直接 advanceTier |
+| 实机 smoke test | 本期交付代码 + 单测 + **诊断脚本**，用户在 UE 环境跑 | 新增子任务 6 |
+| 回归阈值 | 默认 `luminanceDeltaPct 恶化 >15pp` 且 `deltaE_mean 恶化 >3`（AND），基于 session_analysis.md 真实数据推导（正常轮 deltaPct 7-12%，崩溃轮 -27.7%；deltaE 正常 16-17、崩溃 21.7），实机后校准 | 子任务 3 常量值 |
 
 ---
 
@@ -13,7 +21,7 @@
 
 两次实机 session 暴露：LLM 在 autoExposureBias 上「单调调过头再回撤」——迭代 13 设 `autoExposureBias=-0.15` → 亮度崩 27.7%，随后 LLM 花 3 轮手动 `-0.03 → 0 → bOverride=false` 修回来。
 
-现有三个停滞信号（round_cap / plateau / oscillation）都抓不住这类事件（详见 handoff §2.3 对照表）：它不是震荡，是**单调漂移**。缺的是一个**回归信号**：比较当前定量指标（来自每次 assess_lighting 的截图）与 bestRound 的历史最佳，明显变差 → 回退 + 强制推进。
+现有三个停滞信号（round_cap / plateau / oscillation）都抓不住这类事件（详见 handoff §2.3 对照表）：它不是震荡，是**单调漂移**。缺的是一个**回归信号**：比较当前定量指标（来自每次 assess_lighting 的截图）与 bestRound 的历史最佳，明显变差 → 回退。
 
 ### 2. 回滚通道 bug（审阅发现）
 
@@ -80,13 +88,18 @@ bestRound: {
 - 更新条件**不变**（close_enough 数量严格递增）——回归基准 = "LLM 自己认为最好的轮"
 - 不能依赖 `quantitativeSnapshots`（只存最近 3 轮，可能被 shift 掉），bestRound 必须自带快照
 
-### 3. regression 信号（核心）
+### 3. regression 信号（核心，按已确认决策）
+
+**语义**：回归 = 「一笔误操作恢复」，不是「阶段结束」。触发后**回滚但不推进**，留在本 tier 重试；每 tier 回滚次数上限 `REGRESSION_MAX_ROLLBACKS = 1`，达到上限后再次回归 → 回滚 + 强制推进。
 
 ```typescript
-// phase-machine.ts — detectStall 新增第 4 个信号
-// 顺序: round_cap → plateau → regression → oscillation（Q4）
-export const REGRESSION_LUM_DELTA_PP = 15;  // 亮度偏差恶化阈值（百分点）
+// phase-machine.ts
+export const REGRESSION_LUM_DELTA_PP = 15;  // 亮度偏差恶化阈值（百分点），用户确认默认值
 export const REGRESSION_DELTAE = 3;          // deltaE_mean 恶化阈值
+export const REGRESSION_MAX_ROLLBACKS = 1;   // 每 tier 最多回滚重试次数
+
+// PhaseState 新增
+rollbackCount: number;  // 本 tier 已触发回归回滚的次数（resetTierProgress 清零）
 
 function detectRegression(state: PhaseState): boolean {
   const best = state.bestRound;
@@ -98,20 +111,31 @@ function detectRegression(state: PhaseState): boolean {
 }
 ```
 
-- 触发后走现有路径：`computeRollbackWrites` → `pendingRollback` → `advanceTier`（零新增接线）
-- 指标噪声防护：大阈值 + 主次信号 AND（009 的 auto-exposure 污染教训）
-- 防循环天然成立：advanceTier 单向推进 + resetTierProgress 清空 bestRound/journal（Q4）
-- StallKind 加 `"regression"`，lastStall 注入文案自动复用（buildInjectionAppendix）
+**onAssessLighting 分支（TUNING 内，顺序）**：
+
+```
+1. allClosed → advanceTier（正常收敛）
+2. detectStall（round_cap/plateau/oscillation）→ 回滚 + advanceTier（原有路径不变）
+3. detectRegression → 回滚 + 留在本 tier：
+   - rollbackCount++；bestRound 重置为当前轮（journalMark = changeJournal.length，新基线）
+   - 若 rollbackCount > REGRESSION_MAX_ROLLBACKS → 改为回滚 + advanceTier
+```
+
+- StallKind 加 `"regression"`，lastStall 注入文案区分「已回滚，继续本 tier」/「已回滚，进入下一阶段」
+- 回滚写（applyRollback 的 set_properties）**不进 journal**（index.ts 直接调 MCP，不经过 recordWrite）——天然正确
+- 防循环：bestRound 重置 + journalMark 前移，后续回归只比较新基线之后的新写
 
 ### 4. 测试
 
-**verify-issue-012-convergence.ts 扩展**（4 个用例）：
+**verify-issue-012-convergence.ts 扩展**（按新语义）：
 
 ```
-1. 回归触发: bestRound.quant lum=10 → 下一轮 lum=25 → regression → pendingRollback 非空 + tier 推进
-2. 改善不触发: 下一轮 lum=8（变好）→ 不停滞
-3. 无 bestRound 不触发: 首轮 → 不停滞
-4. 阈值内小波动不触发: lum 恶化 5pp（< 15）→ 不停滞
+1. 回归触发（首次）: bestRound.quant lum=10 → 下一轮 lum=25 → regression →
+   pendingRollback 非空 + tier 不变 + rollbackCount=1 + bestRound 重置（journalMark 前移）
+2. 回归再触发（第二次）: 重置基线后再次恶化 → 回滚 + tier 推进（rollbackCount > 上限）
+3. 改善不触发: 下一轮 lum=8（变好）→ 不停滞
+4. 无 bestRound 不触发: 首轮 → 不停滞
+5. 阈值内小波动不触发: lum 恶化 5pp（< 15）→ 不停滞
 ```
 
 **新增 test/rollback-channel.test.ts**（mock UeClient.callToolWithRetry，断言 applyRollback 按通道选工具和参数形状）：
@@ -125,7 +149,7 @@ function detectRegression(state: PhaseState): boolean {
 
 运行方式同现有：`node --import tsx test/<file>.ts`（packages/ue-harness 目录）。
 
-### 5. 实机 smoke test（前置/伴随）
+### 5. 实机 smoke test（用户在 UE 环境跑，脚本见子任务 6）
 
 回归会让回滚第一次在实机真正执行——必须先验证执行器本身。验证 4 条 UE 写路径：
 
@@ -134,16 +158,36 @@ function detectRegression(state: PhaseState): boolean {
 3. `set_actor_transform` 旋转（方向 tier）
 4. `values` 通道回滚写（PPV settings，三步流程：读 settings → 改字段+bOverride → values JSON 写回）
 
+### 6. 实机诊断脚本（本期交付，用户在 UE 环境跑）
+
+仿 010c 的 diag 风格（`test/presets-010c-capture-diag.ts`），新建 `test/rollback-diag.ts`：
+
+```
+[DIAG] === rollback channel diagnostic ===
+[DIAG] Connected to UE MCP at http://localhost:8000/mcp
+[DIAG] --- properties 通道 ---
+[DIAG]   set DirectionalLight.intensity = 5 → get_properties 读回 = 5 ✓
+[DIAG] --- transform 通道 ---
+[DIAG]   set_actor_transform yaw=45 → get_actor_transform 读回 = 45 ✓
+[DIAG] --- values 通道（PPV）---
+[DIAG]   get_properties(["settings"]) → 读回 struct 字段名: WhiteTemp, ColorSaturation...
+[DIAG]   values 写回 { settings: {...} } → get_properties 读回确认生效 ✓
+```
+
+目标：验证 from 值可写回（字段名大小写一致）、三种通道参数形状正确。
+
 ---
 
 ## 涉及文件
 
 | 文件 | 操作 |
 |------|------|
-| `src/workflow/phase-machine.ts` | JournalEntry 加 channel；bestRound 加 quant；detectStall 加 regression + 常量；StallKind 加 "regression" |
+| `src/workflow/phase-machine.ts` | JournalEntry 加 channel；bestRound 加 quant；PhaseState 加 rollbackCount；detectRegression + 常量；onAssessLighting 回归分支；StallKind 加 "regression" |
 | `src/index.ts` | capturePreWrite / captureTransformPreWrite 填 channel；applyRollback 按通道分派 |
-| `test/verify-issue-012-convergence.ts` | 扩展 4 个 regression 用例 |
+| `src/workflow/injections.ts` | lastStall 文案适配 regression（已回滚继续 / 已回滚推进） |
+| `test/verify-issue-012-convergence.ts` | 扩展 5 个 regression 用例 |
 | `test/rollback-channel.test.ts` | **新建**：applyRollback 通道 mock 测试 |
+| `test/rollback-diag.ts` | **新建**：实机诊断脚本（用户在 UE 环境跑） |
 
 ## 非本期范围
 
